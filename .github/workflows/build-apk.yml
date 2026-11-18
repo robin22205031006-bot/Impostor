@@ -18,10 +18,16 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '17'
-      - name: Install Capacitor & Android platform
+      - name: Setup Capacitor and Android
         run: |
           npm install @capacitor/core @capacitor/cli @capacitor/android
-          npx cap init "Impostor Game" "com.zanan.impostor" --web-dir dist
+          cat << 'EOF' > capacitor.config.json
+          {
+            "appId": "com.zanan.impostor",
+            "appName": "Impostor Game",
+            "webDir": "dist"
+          }
+          EOF
           npx cap add android
       - name: Build APK with Gradle
         run: |
