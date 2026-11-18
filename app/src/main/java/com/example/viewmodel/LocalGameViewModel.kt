@@ -408,8 +408,6 @@ class LocalGameViewModel : ViewModel() {
             player.copy(score = player.score + delta)
         }
 
-        SoundCuePlayer.playVotingResultsCue(eval.crewWins)
-
         _uiState.update {
             it.copy(
                 phase = LocalPhase.RESULTS,

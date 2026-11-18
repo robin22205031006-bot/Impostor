@@ -2,6 +2,7 @@ package com.example.ui.screens
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -65,8 +66,10 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -90,6 +93,8 @@ import com.example.data.UiState
 import com.example.data.WordBank
 import com.example.ui.components.AgentDirectorBadge
 import com.example.ui.components.AgentPredictionCard
+import com.example.ui.components.EliminatedPlayerReveal
+import com.example.ui.components.EliminationRevealOverlay
 import com.example.ui.components.ImpostorAnimatedBackdrop
 import com.example.ui.components.OtherImpostorAllyNote
 import com.example.ui.components.RoleWordCard
@@ -120,6 +125,7 @@ fun MultiplayerRoomScreen(
     var copiedNotice by remember { mutableStateOf(false) }
     var showRenameDialog by remember { mutableStateOf(false) }
     var renameDraft by remember { mutableStateOf("") }
+    var dismissedEliminationRound by rememberSaveable { mutableLongStateOf(-1L) }
 
     BackHandler {
         onExitRoom()
@@ -542,6 +548,39 @@ fun MultiplayerRoomScreen(
                             }
                         }
                     }
+                }
+            }
+        }
+
+        val activeRoom = (roomState as? UiState.Success)?.data
+        val showEliminationOverlay = activeRoom != null &&
+            activeRoom.roomStatus() == RoomStatus.RESULTS &&
+            activeRoom.currentRound > 0L &&
+            dismissedEliminationRound != activeRoom.currentRound
+        AnimatedVisibility(
+            visible = showEliminationOverlay && activeRoom != null,
+            enter = fadeIn(animationSpec = tween(220)),
+            exit = fadeOut(animationSpec = tween(220))
+        ) {
+            if (activeRoom != null) {
+                val verdict = remember(
+                    activeRoom.currentRound,
+                    activeRoom.votes,
+                    activeRoom.revealedImpostorUids,
+                    activeRoom.revealedNullifiedVoterUid,
+                    activeRoom.revealedDirectorUid,
+                    activeRoom.impostorGuessCorrect
+                ) {
+                    computeMultiplayerVerdict(activeRoom)
+                }
+                androidx.compose.runtime.key(activeRoom.currentRound) {
+                    EliminationRevealOverlay(
+                        eliminatedPlayers = verdict.eliminatedPlayers,
+                        crewWon = verdict.crewWon,
+                        impostorGuessCorrect = verdict.guessWon,
+                        onRevealVerdict = { SoundCuePlayer.playVotingResultsCue(verdict.crewWon) },
+                        onDismiss = { dismissedEliminationRound = activeRoom.currentRound }
+                    )
                 }
             }
         }
@@ -1351,15 +1390,19 @@ private fun MultiplayerVotingContent(
     }
 }
 
-@Composable
-private fun MultiplayerResultsContent(
-    room: GameRoom,
-    isHost: Boolean,
-    isBusy: Boolean,
-    onNextRound: () -> Unit,
-    onReturnLobby: () -> Unit
-) {
-    val palette = LocalImpostorPalette.current
+private data class MultiplayerVerdict(
+    val impostorSet: Set<String>,
+    val nullifiedUid: String?,
+    val protectedUid: String?,
+    val saviorUid: String?,
+    val directorUid: String?,
+    val saviorSaved: Boolean,
+    val eliminatedPlayers: List<EliminatedPlayerReveal>,
+    val guessWon: Boolean,
+    val crewWon: Boolean
+)
+
+private fun computeMultiplayerVerdict(room: GameRoom): MultiplayerVerdict {
     val impostorSet = room.revealedImpostorUids.toSet()
     val nullifiedUid = if (room.impostorAbilityEnabled) room.revealedNullifiedVoterUid?.takeIf { it.isNotBlank() } else null
     val protectedUid = if (room.saviorAgentEnabled) room.revealedProtectedUid?.takeIf { it.isNotBlank() } else null
@@ -1379,13 +1422,61 @@ private fun MultiplayerResultsContent(
         }
     }
     val topCount = voteCounts.values.maxOrNull() ?: 0
-    val caught = topCount > 0 && voteCounts.filterValues { it == topCount }.keys.any { it in impostorSet }
+    val topIds = if (topCount > 0) voteCounts.filterValues { it == topCount }.keys else emptySet()
+    val caught = topIds.any { it in impostorSet }
     val guessWon = room.impostorGuessCorrect == true
     val crewWon = caught && !guessWon
-
-    LaunchedEffect(room.currentRound, crewWon) {
-        SoundCuePlayer.playVotingResultsCue(crewWon)
+    val eliminatedPlayers = topIds.map { uid ->
+        EliminatedPlayerReveal(
+            id = uid,
+            name = room.playerNames[uid] ?: "Agent",
+            isImpostor = uid in impostorSet,
+            voteCount = topCount
+        )
     }
+    return MultiplayerVerdict(
+        impostorSet = impostorSet,
+        nullifiedUid = nullifiedUid,
+        protectedUid = protectedUid,
+        saviorUid = saviorUid,
+        directorUid = directorUid,
+        saviorSaved = saviorSaved,
+        eliminatedPlayers = eliminatedPlayers,
+        guessWon = guessWon,
+        crewWon = crewWon
+    )
+}
+
+@Composable
+private fun MultiplayerResultsContent(
+    room: GameRoom,
+    isHost: Boolean,
+    isBusy: Boolean,
+    onNextRound: () -> Unit,
+    onReturnLobby: () -> Unit
+) {
+    val palette = LocalImpostorPalette.current
+    val verdict = remember(
+        room.currentRound,
+        room.votes,
+        room.revealedImpostorUids,
+        room.revealedNullifiedVoterUid,
+        room.revealedProtectedUid,
+        room.revealedSaviorUid,
+        room.revealedDirectorUid,
+        room.revealedSaviorSaved,
+        room.impostorGuessCorrect
+    ) {
+        computeMultiplayerVerdict(room)
+    }
+    val impostorSet = verdict.impostorSet
+    val nullifiedUid = verdict.nullifiedUid
+    val protectedUid = verdict.protectedUid
+    val saviorUid = verdict.saviorUid
+    val directorUid = verdict.directorUid
+    val saviorSaved = verdict.saviorSaved
+    val guessWon = verdict.guessWon
+    val crewWon = verdict.crewWon
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),

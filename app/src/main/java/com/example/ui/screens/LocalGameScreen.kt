@@ -62,8 +62,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -78,6 +80,8 @@ import com.example.data.LocalPlayer
 import com.example.data.PlayerRole
 import com.example.ui.components.AgentDirectorBadge
 import com.example.ui.components.AgentPredictionCard
+import com.example.ui.components.EliminatedPlayerReveal
+import com.example.ui.components.EliminationRevealOverlay
 import com.example.ui.components.ImpostorAnimatedBackdrop
 import com.example.ui.components.OtherImpostorAllyNote
 import com.example.ui.components.PulsingStatusDot
@@ -98,6 +102,7 @@ fun LocalGameScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val soundEnabled by SoundCuePlayer.soundEnabled.collectAsStateWithLifecycle()
     val palette = LocalImpostorPalette.current
+    var dismissedEliminationRound by rememberSaveable { mutableIntStateOf(0) }
 
     BackHandler(enabled = state.phase != LocalPhase.SETUP) {
         viewModel.returnToSetup()
@@ -310,6 +315,41 @@ fun LocalGameScreen(
                         onReturnSetup = viewModel::returnToSetup
                     )
                 }
+            }
+        }
+
+        val showEliminationOverlay =
+            state.phase == LocalPhase.RESULTS && dismissedEliminationRound != state.roundNumber
+        AnimatedVisibility(
+            visible = showEliminationOverlay,
+            enter = fadeIn(animationSpec = tween(220)),
+            exit = fadeOut(animationSpec = tween(220))
+        ) {
+            val topVotes = state.roundVoteCounts.values.maxOrNull() ?: 0
+            val eliminatedPlayers = remember(state.roundNumber, state.roundVoteCounts, state.players, state.impostorIds) {
+                if (topVotes > 0) {
+                    state.roundVoteCounts.filterValues { it == topVotes }.keys.mapNotNull { pid ->
+                        state.players.firstOrNull { it.id == pid }?.let { player ->
+                            EliminatedPlayerReveal(
+                                id = player.id,
+                                name = player.name,
+                                isImpostor = player.id in state.impostorIds,
+                                voteCount = topVotes
+                            )
+                        }
+                    }
+                } else {
+                    emptyList()
+                }
+            }
+            androidx.compose.runtime.key(state.roundNumber) {
+                EliminationRevealOverlay(
+                    eliminatedPlayers = eliminatedPlayers,
+                    crewWon = state.crewWon,
+                    impostorGuessCorrect = state.impostorGuessCorrect,
+                    onRevealVerdict = { SoundCuePlayer.playVotingResultsCue(state.crewWon) },
+                    onDismiss = { dismissedEliminationRound = state.roundNumber }
+                )
             }
         }
     }
