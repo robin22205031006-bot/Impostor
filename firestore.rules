@@ -1,0 +1,346 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global safety net: default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- GLOBAL PRIMITIVE HELPERS ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // --- DOMAIN VALIDATION HELPERS ---
+    function isValidUserProfile(data) {
+      return data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 24 &&
+             data.gamesPlayed is int && data.gamesPlayed >= 0 &&
+             data.wins is int && data.wins >= 0 &&
+             data.impostorRounds is int && data.impostorRounds >= 0;
+    }
+
+    function isValidRoom(data) {
+      return data.roomCode is string && data.roomCode.size() >= 4 && data.roomCode.size() <= 16 &&
+             data.hostId is string && data.hostId.size() >= 1 && data.hostId.size() <= 128 &&
+             data.status in ['LOBBY', 'REVEAL', 'PLAYING', 'VOTING', 'RESULTS'] &&
+             (!('gameMode' in data) || data.gameMode in ['CLASSIC', 'SPEED_ROUND', 'EXPERT']) &&
+             (!('hintsEnabled' in data) || data.hintsEnabled is bool) &&
+             (!('categoryCluesEnabled' in data) || data.categoryCluesEnabled is bool) &&
+             (!('timerEnabled' in data) || data.timerEnabled is bool) &&
+             (!('impostorAbilityEnabled' in data) || data.impostorAbilityEnabled is bool) &&
+             (!('saviorAgentEnabled' in data) || data.saviorAgentEnabled is bool) &&
+             (!('agentDirectorEnabled' in data) || data.agentDirectorEnabled is bool) &&
+             (!('agentPredictionEnabled' in data) || data.agentPredictionEnabled is bool) &&
+             data.impostorCount is int && data.impostorCount >= 1 && data.impostorCount <= 10 &&
+             data.turnDurationSeconds is int && data.turnDurationSeconds >= 5 && data.turnDurationSeconds <= 300 &&
+             data.selectedCategory is string && data.selectedCategory.size() >= 1 && data.selectedCategory.size() <= 40 &&
+             data.currentRound is int && data.currentRound >= 0 &&
+             data.category is string && data.category.size() <= 40 &&
+             data.genre is string && data.genre.size() <= 60 &&
+             data.hint is string && data.hint.size() <= 120 &&
+             data.memberUids is list && data.memberUids.size() >= 1 && data.memberUids.size() <= 20 &&
+             data.playerNames is map && data.playerNames.size() <= 20 &&
+             data.playerScores is map && data.playerScores.size() <= 20 &&
+             data.turnOrder is list && data.turnOrder.size() <= 20 &&
+             data.currentTurnIndex is int && data.currentTurnIndex >= 0 && data.currentTurnIndex <= 20 &&
+             (!('turnStartedAt' in data) || data.turnStartedAt is timestamp) &&
+             data.timerPaused is bool &&
+             data.readyUids is list && data.readyUids.size() <= 20 &&
+             data.votes is map && data.votes.size() <= 20 &&
+             (!('revealedWord' in data) || (data.revealedWord is string && data.revealedWord.size() <= 80)) &&
+             data.revealedImpostorUids is list && data.revealedImpostorUids.size() <= 10 &&
+             (!('revealedKillerUid' in data) || data.revealedKillerUid is string) &&
+             (!('revealedNullifiedVoterUid' in data) || data.revealedNullifiedVoterUid is string) &&
+             (!('revealedSaviorUid' in data) || data.revealedSaviorUid is string) &&
+             (!('revealedProtectedUid' in data) || data.revealedProtectedUid is string) &&
+             (!('revealedSaviorSaved' in data) || data.revealedSaviorSaved is bool) &&
+             (!('revealedDirectorUid' in data) || data.revealedDirectorUid is string) &&
+             (!('revealedPredictions' in data) || (data.revealedPredictions is map && data.revealedPredictions.size() <= 20)) &&
+             (!('revealedRoundDeltas' in data) || (data.revealedRoundDeltas is map && data.revealedRoundDeltas.size() <= 20)) &&
+             (!('impostorGuess' in data) || (data.impostorGuess is string && data.impostorGuess.size() <= 80)) &&
+             (!('impostorGuessBy' in data) || data.impostorGuessBy is string) &&
+             (!('impostorGuessCorrect' in data) || data.impostorGuessCorrect is bool);
+    }
+
+    function isValidAssignment(data) {
+      return data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 &&
+             data.role in ['IMPOSTOR', 'NORMAL'] &&
+             data.secretWord is string && data.secretWord.size() <= 80 &&
+             (data.role == 'NORMAL' || data.secretWord == '') &&
+             data.category is string && data.category.size() <= 40 &&
+             data.genre is string && data.genre.size() <= 60 &&
+             data.hint is string && data.hint.size() <= 120 &&
+             (!('ultimateKiller' in data) || data.ultimateKiller is bool) &&
+             (!('savior' in data) || data.savior is bool) &&
+             (!('director' in data) || data.director is bool) &&
+             data.round is int && data.round >= 1;
+    }
+
+    function isValidSecretAction(data) {
+      return data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 &&
+             data.round is int && data.round >= 1 &&
+             (!('killedVoterUid' in data) || (data.killedVoterUid is string && data.killedVoterUid.size() <= 128)) &&
+             (!('protectedPlayerUid' in data) || (data.protectedPlayerUid is string && data.protectedPlayerUid.size() <= 128)) &&
+             (!('predictedImpostorUid' in data) || (data.predictedImpostorUid is string && data.predictedImpostorUid.size() <= 128));
+    }
+
+    function isHostRoomUpdate(changed) {
+      return request.auth.uid == resource.data.hostId &&
+             changed.hasOnly([
+               'status', 'gameMode', 'hintsEnabled', 'categoryCluesEnabled', 'timerEnabled',
+               'impostorAbilityEnabled', 'saviorAgentEnabled', 'agentDirectorEnabled', 'agentPredictionEnabled',
+               'impostorCount', 'turnDurationSeconds', 'selectedCategory',
+               'currentRound', 'category', 'genre', 'hint',
+               'turnOrder', 'currentTurnIndex', 'turnStartedAt', 'timerPaused',
+               'readyUids', 'votes', 'playerScores', 'playerNames', 'memberUids',
+               'revealedWord', 'revealedImpostorUids', 'revealedKillerUid',
+               'revealedNullifiedVoterUid', 'revealedSaviorUid', 'revealedProtectedUid',
+               'revealedSaviorSaved', 'revealedDirectorUid', 'revealedPredictions', 'revealedRoundDeltas',
+               'impostorGuess', 'impostorGuessBy', 'impostorGuessCorrect', 'updatedAt'
+             ]);
+    }
+
+    function isJoinRoomAction(changed) {
+      return resource.data.status == 'LOBBY' &&
+             !(request.auth.uid in resource.data.memberUids) &&
+             changed.hasOnly(['memberUids', 'playerNames', 'playerScores', 'updatedAt']) &&
+             request.resource.data.memberUids.hasAll(resource.data.memberUids) &&
+             request.resource.data.memberUids.size() == resource.data.memberUids.size() + 1 &&
+             request.auth.uid in request.resource.data.memberUids &&
+             request.resource.data.playerNames.diff(resource.data.playerNames).affectedKeys().hasOnly([request.auth.uid]) &&
+             request.resource.data.playerNames[request.auth.uid] is string &&
+             request.resource.data.playerNames[request.auth.uid].size() >= 1 &&
+             request.resource.data.playerNames[request.auth.uid].size() <= 24 &&
+             request.resource.data.playerScores.diff(resource.data.playerScores).affectedKeys().hasOnly([request.auth.uid]) &&
+             request.resource.data.playerScores[request.auth.uid] == 0;
+    }
+
+    function isMemberRoomAction(changed) {
+      return request.auth.uid in resource.data.memberUids && (
+        (
+          changed.hasOnly(['playerNames', 'updatedAt']) &&
+          request.resource.data.playerNames.diff(resource.data.playerNames).affectedKeys().hasOnly([request.auth.uid]) &&
+          request.resource.data.playerNames[request.auth.uid] is string &&
+          request.resource.data.playerNames[request.auth.uid].size() >= 1 &&
+          request.resource.data.playerNames[request.auth.uid].size() <= 24
+        ) ||
+        (
+          resource.data.status == 'REVEAL' &&
+          changed.hasOnly(['readyUids', 'updatedAt']) &&
+          request.resource.data.readyUids.hasAll(resource.data.readyUids) &&
+          request.auth.uid in request.resource.data.readyUids &&
+          request.resource.data.readyUids.size() <= resource.data.memberUids.size()
+        ) ||
+        (
+          resource.data.status == 'VOTING' &&
+          changed.hasOnly(['votes', 'updatedAt']) &&
+          request.resource.data.votes.diff(resource.data.votes).affectedKeys().hasOnly([request.auth.uid]) &&
+          request.resource.data.votes[request.auth.uid] in resource.data.memberUids
+        ) ||
+        (
+          resource.data.status in ['PLAYING', 'VOTING'] &&
+          changed.hasOnly(['impostorGuess', 'impostorGuessBy', 'updatedAt']) &&
+          request.resource.data.impostorGuessBy == request.auth.uid &&
+          request.resource.data.impostorGuess is string &&
+          request.resource.data.impostorGuess.size() >= 1 &&
+          request.resource.data.impostorGuess.size() <= 80
+        ) ||
+        (
+          request.auth.uid != resource.data.hostId &&
+          changed.hasOnly(['memberUids', 'updatedAt']) &&
+          !(request.auth.uid in request.resource.data.memberUids) &&
+          resource.data.memberUids.hasAll(request.resource.data.memberUids) &&
+          request.resource.data.memberUids.size() == resource.data.memberUids.size() - 1
+        )
+      );
+    }
+
+    function canUpdateRoom() {
+      let changed = request.resource.data.diff(resource.data).affectedKeys();
+      return isJoinRoomAction(changed) ||
+             isMemberRoomAction(changed) ||
+             (isHostRoomUpdate(changed) && isValidRoom(request.resource.data));
+    }
+
+    // --- COLLECTION RULES ---
+
+    match /users/{userId} {
+      allow get, list: if isSignedIn() && request.auth.uid == userId;
+
+      allow create: if isSignedIn() &&
+                       isValidId(userId) &&
+                       request.auth.uid == userId &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().keys().hasAll(['userId', 'displayName', 'gamesPlayed', 'wins', 'impostorRounds', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['userId', 'displayName', 'gamesPlayed', 'wins', 'impostorRounds', 'createdAt', 'updatedAt']) &&
+                       incoming().createdAt is timestamp && incoming().createdAt <= request.time &&
+                       incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+                       isValidUserProfile(incoming());
+
+      allow update: if isSignedIn() &&
+                       isValidId(userId) &&
+                       request.auth.uid == userId &&
+                       isValidUserProfile(incoming()) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'gamesPlayed', 'wins', 'impostorRounds', 'updatedAt']);
+
+      allow delete: if isSignedIn() && isValidId(userId) && request.auth.uid == userId;
+    }
+
+    match /rooms/{roomCode} {
+      allow get: if isSignedIn() &&
+                    isValidId(roomCode) &&
+                    (resource == null || request.auth.uid in existing().memberUids || existing().status == 'LOBBY');
+
+      allow list: if isSignedIn() && request.auth.uid in existing().memberUids;
+
+      allow create: if isSignedIn() &&
+                       isValidId(roomCode) &&
+                       request.resource.data.roomCode == roomCode &&
+                       request.resource.data.hostId == request.auth.uid &&
+                       request.resource.data.status == 'LOBBY' &&
+                       request.resource.data.memberUids.size() == 1 &&
+                       request.auth.uid in request.resource.data.memberUids &&
+                       request.resource.data.keys().hasAll([
+                         'roomCode', 'hostId', 'status', 'impostorCount', 'turnDurationSeconds',
+                         'selectedCategory', 'currentRound', 'category', 'genre', 'hint',
+                         'memberUids', 'playerNames', 'playerScores', 'turnOrder', 'currentTurnIndex',
+                         'timerPaused', 'readyUids', 'votes', 'revealedImpostorUids',
+                         'createdAt', 'updatedAt'
+                       ]) &&
+                       request.resource.data.keys().hasOnly([
+                         'roomCode', 'hostId', 'status', 'gameMode', 'hintsEnabled', 'categoryCluesEnabled',
+                         'timerEnabled', 'impostorAbilityEnabled', 'saviorAgentEnabled', 'agentDirectorEnabled',
+                         'agentPredictionEnabled',
+                         'impostorCount', 'turnDurationSeconds',
+                         'selectedCategory', 'currentRound', 'category', 'genre', 'hint',
+                         'memberUids', 'playerNames', 'playerScores', 'turnOrder', 'currentTurnIndex',
+                         'turnStartedAt', 'timerPaused', 'readyUids', 'votes',
+                         'revealedWord', 'revealedImpostorUids', 'revealedKillerUid',
+                         'revealedNullifiedVoterUid', 'revealedSaviorUid', 'revealedProtectedUid',
+                         'revealedSaviorSaved', 'revealedDirectorUid',
+                         'revealedPredictions', 'revealedRoundDeltas',
+                         'impostorGuess', 'impostorGuessBy',
+                         'impostorGuessCorrect', 'createdAt', 'updatedAt'
+                       ]) &&
+                       request.resource.data.createdAt is timestamp && request.resource.data.createdAt <= request.time &&
+                       request.resource.data.updatedAt is timestamp && request.resource.data.updatedAt <= request.time &&
+                       isValidRoom(request.resource.data);
+
+      allow update: if isSignedIn() &&
+                       isValidId(roomCode) &&
+                       request.resource.data.roomCode == resource.data.roomCode &&
+                       request.resource.data.hostId == resource.data.hostId &&
+                       request.resource.data.createdAt == resource.data.createdAt &&
+                       request.resource.data.updatedAt is timestamp &&
+                       request.resource.data.updatedAt <= request.time &&
+                       canUpdateRoom();
+
+      allow delete: if isSignedIn() && isValidId(roomCode) && existing().hostId == request.auth.uid;
+
+      match /assignments/{playerUid} {
+        allow get: if isSignedIn() && isValidId(roomCode) && isValidId(playerUid) && request.auth.uid == playerUid;
+        allow list: if false;
+
+        allow create, update: if isSignedIn() &&
+                                 isValidId(roomCode) &&
+                                 isValidId(playerUid) &&
+                                 isValidAssignment(incoming()) &&
+                                 incoming().uid == playerUid &&
+                                 incoming().keys().hasAll(['uid', 'role', 'secretWord', 'category', 'genre', 'hint', 'round', 'updatedAt']) &&
+                                 incoming().keys().hasOnly(['uid', 'role', 'secretWord', 'category', 'genre', 'hint', 'ultimateKiller', 'savior', 'director', 'round', 'updatedAt']) &&
+                                 incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+                                 get(/databases/$(database)/documents/rooms/$(roomCode)).data.hostId == request.auth.uid;
+
+        allow delete: if isSignedIn() &&
+                         isValidId(roomCode) &&
+                         isValidId(playerUid) &&
+                         get(/databases/$(database)/documents/rooms/$(roomCode)).data.hostId == request.auth.uid;
+      }
+
+      match /hostSecrets/{secretId} {
+        allow get: if isSignedIn() &&
+                      isValidId(roomCode) &&
+                      isValidId(secretId) &&
+                      get(/databases/$(database)/documents/rooms/$(roomCode)).data.hostId == request.auth.uid;
+        allow list: if false;
+
+        allow create, update: if isSignedIn() &&
+                                 isValidId(roomCode) &&
+                                 isValidId(secretId) &&
+                                 incoming().hostId == request.auth.uid &&
+                                 incoming().secretWord is string &&
+                                 incoming().secretWord.size() >= 1 &&
+                                 incoming().secretWord.size() <= 80 &&
+                                 incoming().impostorUids is list &&
+                                 incoming().impostorUids.size() >= 1 &&
+                                 incoming().impostorUids.size() <= 10 &&
+                                 (!('ultimateKillerUid' in incoming()) || (incoming().ultimateKillerUid is string && incoming().ultimateKillerUid.size() <= 128)) &&
+                                 (!('saviorUid' in incoming()) || (incoming().saviorUid is string && incoming().saviorUid.size() <= 128)) &&
+                                 (!('directorUid' in incoming()) || (incoming().directorUid is string && incoming().directorUid.size() <= 128)) &&
+                                 incoming().round is int &&
+                                 incoming().round >= 1 &&
+                                 incoming().keys().hasAll(['hostId', 'secretWord', 'impostorUids', 'round', 'updatedAt']) &&
+                                 incoming().keys().hasOnly(['hostId', 'secretWord', 'impostorUids', 'ultimateKillerUid', 'saviorUid', 'directorUid', 'round', 'updatedAt']) &&
+                                 incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+                                 get(/databases/$(database)/documents/rooms/$(roomCode)).data.hostId == request.auth.uid;
+
+        allow delete: if isSignedIn() &&
+                         isValidId(roomCode) &&
+                         isValidId(secretId) &&
+                         get(/databases/$(database)/documents/rooms/$(roomCode)).data.hostId == request.auth.uid;
+      }
+
+      match /secretActions/{playerUid} {
+        allow get: if isSignedIn() &&
+                      isValidId(roomCode) &&
+                      isValidId(playerUid) &&
+                      (
+                        request.auth.uid == playerUid ||
+                        (
+                          get(/databases/$(database)/documents/rooms/$(roomCode)).data.hostId == request.auth.uid &&
+                          get(/databases/$(database)/documents/rooms/$(roomCode)).data.status in ['VOTING', 'RESULTS']
+                        )
+                      );
+
+        allow list: if isSignedIn() &&
+                       isValidId(roomCode) &&
+                       get(/databases/$(database)/documents/rooms/$(roomCode)).data.hostId == request.auth.uid &&
+                       get(/databases/$(database)/documents/rooms/$(roomCode)).data.status in ['VOTING', 'RESULTS'];
+
+        allow create, update: if isSignedIn() &&
+                                 isValidId(roomCode) &&
+                                 isValidId(playerUid) &&
+                                 request.auth.uid == playerUid &&
+                                 isValidSecretAction(incoming()) &&
+                                 incoming().uid == playerUid &&
+                                 incoming().keys().hasAll(['uid', 'round', 'updatedAt']) &&
+                                 incoming().keys().hasOnly(['uid', 'round', 'killedVoterUid', 'protectedPlayerUid', 'predictedImpostorUid', 'updatedAt']) &&
+                                 incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+                                 request.auth.uid in get(/databases/$(database)/documents/rooms/$(roomCode)).data.memberUids &&
+                                 get(/databases/$(database)/documents/rooms/$(roomCode)).data.status in ['REVEAL', 'PLAYING', 'VOTING'];
+
+        allow delete: if isSignedIn() &&
+                         isValidId(roomCode) &&
+                         isValidId(playerUid) &&
+                         get(/databases/$(database)/documents/rooms/$(roomCode)).data.hostId == request.auth.uid;
+      }
+    }
+  }
+}

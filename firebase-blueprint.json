@@ -1,0 +1,427 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Authenticated player profile with customizable nickname and lifetime Impostor game stats.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the user."
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Customizable player nickname."
+        },
+        "gamesPlayed": {
+          "type": "integer",
+          "description": "Total completed games."
+        },
+        "wins": {
+          "type": "integer",
+          "description": "Total rounds won."
+        },
+        "impostorRounds": {
+          "type": "integer",
+          "description": "Total rounds played as an impostor."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when profile was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when profile was last updated."
+        }
+      },
+      "required": [
+        "userId",
+        "displayName",
+        "gamesPlayed",
+        "wins",
+        "impostorRounds",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "GameRoom": {
+      "title": "GameRoom",
+      "description": "Cross-device multiplayer Impostor game room state, player roster, turn timer metadata, and voting state.",
+      "type": "object",
+      "properties": {
+        "roomCode": {
+          "type": "string",
+          "description": "6-character uppercase alphanumeric room code matching document ID."
+        },
+        "hostId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the room host."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["LOBBY", "REVEAL", "PLAYING", "VOTING", "RESULTS"],
+          "description": "Current lifecycle phase of the room."
+        },
+        "impostorCount": {
+          "type": "integer",
+          "description": "Number of impostors chosen by the host."
+        },
+        "turnDurationSeconds": {
+          "type": "integer",
+          "description": "Length of each player's turn in seconds."
+        },
+        "selectedCategory": {
+          "type": "string",
+          "description": "Selected category filter or ALL."
+        },
+        "currentRound": {
+          "type": "integer",
+          "description": "Current round number starting at 0 in lobby."
+        },
+        "category": {
+          "type": "string",
+          "description": "Current round word category shown at upper side of word box."
+        },
+        "genre": {
+          "type": "string",
+          "description": "Current round word genre shown below the word box."
+        },
+        "hint": {
+          "type": "string",
+          "description": "Clue close to the secret word shown in red for impostors and green for normals."
+        },
+        "memberUids": {
+          "type": "array",
+          "description": "List of Firebase Auth UIDs currently in the room."
+        },
+        "playerNames": {
+          "type": "object",
+          "description": "Map of UID to player nickname."
+        },
+        "playerScores": {
+          "type": "object",
+          "description": "Map of UID to cumulative score."
+        },
+        "turnOrder": {
+          "type": "array",
+          "description": "Ordered list of UIDs for timed speaking turns."
+        },
+        "currentTurnIndex": {
+          "type": "integer",
+          "description": "Index of active player in turnOrder."
+        },
+        "turnStartedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when current turn started."
+        },
+        "timerPaused": {
+          "type": "boolean",
+          "description": "Whether the turn timer is currently paused."
+        },
+        "readyUids": {
+          "type": "array",
+          "description": "UIDs of players who confirmed viewing their role card."
+        },
+        "votes": {
+          "type": "object",
+          "description": "Map of voter UID to suspect UID."
+        },
+        "hintsEnabled": {
+          "type": "boolean",
+          "description": "Whether 1-word hints are enabled by host."
+        },
+        "categoryCluesEnabled": {
+          "type": "boolean",
+          "description": "Whether Category and Genre labels are enabled by host."
+        },
+        "timerEnabled": {
+          "type": "boolean",
+          "description": "Whether turn countdown timer is enabled by host."
+        },
+        "impostorAbilityEnabled": {
+          "type": "boolean",
+          "description": "Whether one impostor receives the Ultimate Agent Killer vote-voiding ability."
+        },
+        "saviorAgentEnabled": {
+          "type": "boolean",
+          "description": "Whether one regular agent receives the Savior Agent protection shield ability."
+        },
+        "agentDirectorEnabled": {
+          "type": "boolean",
+          "description": "Whether one regular agent receives the Agent Director double-vote ability."
+        },
+        "agentPredictionEnabled": {
+          "type": "boolean",
+          "description": "Whether agents may optionally predict an impostor while viewing words."
+        },
+        "revealedWord": {
+          "type": "string",
+          "description": "Populated only when status transitions to RESULTS."
+        },
+        "revealedImpostorUids": {
+          "type": "array",
+          "description": "Populated only when status transitions to RESULTS."
+        },
+        "revealedKillerUid": {
+          "type": "string",
+          "description": "UID of the Ultimate Agent Killer revealed at RESULTS."
+        },
+        "revealedNullifiedVoterUid": {
+          "type": "string",
+          "description": "UID of the player whose vote was voided by Ultimate Agent Killer, revealed at RESULTS."
+        },
+        "revealedSaviorUid": {
+          "type": "string",
+          "description": "UID of the Savior Agent revealed at RESULTS."
+        },
+        "revealedProtectedUid": {
+          "type": "string",
+          "description": "UID of the player protected by the Savior Agent revealed at RESULTS."
+        },
+        "revealedSaviorSaved": {
+          "type": "boolean",
+          "description": "Whether the Savior Agent successfully shielded the impostor's kill target."
+        },
+        "revealedDirectorUid": {
+          "type": "string",
+          "description": "UID of the Agent Director whose vote counted twice revealed at RESULTS."
+        },
+        "revealedPredictions": {
+          "type": "object",
+          "description": "Map of agent UID to predicted impostor UID revealed at RESULTS."
+        },
+        "revealedRoundDeltas": {
+          "type": "object",
+          "description": "Map of player UID to round score delta revealed at RESULTS."
+        },
+        "impostorGuess": {
+          "type": "string",
+          "description": "Word guess submitted by an impostor."
+        },
+        "impostorGuessBy": {
+          "type": "string",
+          "description": "UID of the player who submitted the impostor guess."
+        },
+        "impostorGuessCorrect": {
+          "type": "boolean",
+          "description": "Whether the impostor word guess matched the secret word."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when room was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when room was last updated."
+        }
+      },
+      "required": [
+        "roomCode",
+        "hostId",
+        "status",
+        "impostorCount",
+        "turnDurationSeconds",
+        "selectedCategory",
+        "currentRound",
+        "category",
+        "genre",
+        "hint",
+        "memberUids",
+        "playerNames",
+        "playerScores",
+        "turnOrder",
+        "currentTurnIndex",
+        "timerPaused",
+        "readyUids",
+        "votes",
+        "revealedImpostorUids",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "PlayerAssignment": {
+      "title": "PlayerAssignment",
+      "description": "Private per-player role assignment document storing whether the player is IMPOSTOR or NORMAL and the secret word for normals.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Player UID matching document ID."
+        },
+        "role": {
+          "type": "string",
+          "enum": ["IMPOSTOR", "NORMAL"],
+          "description": "Assigned role for the round."
+        },
+        "secretWord": {
+          "type": "string",
+          "description": "Secret word for NORMAL players; empty string for IMPOSTOR."
+        },
+        "category": {
+          "type": "string",
+          "description": "Category displayed at the upper side of the word box."
+        },
+        "genre": {
+          "type": "string",
+          "description": "Genre displayed below the word box."
+        },
+        "hint": {
+          "type": "string",
+          "description": "Hint close to the secret word."
+        },
+        "ultimateKiller": {
+          "type": "boolean",
+          "description": "True for the single impostor granted the Ultimate Agent Killer ability this round."
+        },
+        "savior": {
+          "type": "boolean",
+          "description": "True for the regular agent granted the Savior Agent shield ability this round."
+        },
+        "director": {
+          "type": "boolean",
+          "description": "True for the regular agent granted the Agent Director double-vote ability this round."
+        },
+        "round": {
+          "type": "integer",
+          "description": "Round number for this assignment."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when assignment was written."
+        }
+      },
+      "required": [
+        "uid",
+        "role",
+        "secretWord",
+        "category",
+        "genre",
+        "hint",
+        "round",
+        "updatedAt"
+      ]
+    },
+    "HostRoundSecret": {
+      "title": "HostRoundSecret",
+      "description": "Host-only round secret holding the secret word, impostor UIDs, and ultimate killer UID for result evaluation.",
+      "type": "object",
+      "properties": {
+        "hostId": {
+          "type": "string",
+          "description": "UID of the room host."
+        },
+        "secretWord": {
+          "type": "string",
+          "description": "Active round secret word."
+        },
+        "impostorUids": {
+          "type": "array",
+          "description": "UIDs of impostors for the active round."
+        },
+        "ultimateKillerUid": {
+          "type": "string",
+          "description": "UID of the single impostor with Ultimate Agent Killer ability."
+        },
+        "saviorUid": {
+          "type": "string",
+          "description": "UID of the regular agent with Savior Agent ability."
+        },
+        "directorUid": {
+          "type": "string",
+          "description": "UID of the regular agent with Agent Director ability."
+        },
+        "round": {
+          "type": "integer",
+          "description": "Active round number."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when secret was written."
+        }
+      },
+      "required": [
+        "hostId",
+        "secretWord",
+        "impostorUids",
+        "round",
+        "updatedAt"
+      ]
+    },
+    "SecretRoundAction": {
+      "title": "SecretRoundAction",
+      "description": "Private per-player round ability/prediction choice readable by owner or by host at reveal.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Player UID matching document ID."
+        },
+        "round": {
+          "type": "integer",
+          "description": "Round number."
+        },
+        "killedVoterUid": {
+          "type": "string",
+          "description": "Target player UID whose vote is nullified by Ultimate Agent Killer."
+        },
+        "protectedPlayerUid": {
+          "type": "string",
+          "description": "Target player UID given a protection shield by Savior Agent."
+        },
+        "predictedImpostorUid": {
+          "type": "string",
+          "description": "Predicted impostor UID chosen by an Agent, or empty if skipped."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when action was updated."
+        }
+      },
+      "required": [
+        "uid",
+        "round",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": {
+        "$ref": "#/entities/UserProfile"
+      },
+      "description": "Authenticated player profiles and stats."
+    },
+    "/rooms/{roomCode}": {
+      "schema": {
+        "$ref": "#/entities/GameRoom"
+      },
+      "description": "Cross-device multiplayer Impostor rooms."
+    },
+    "/rooms/{roomCode}/assignments/{playerUid}": {
+      "schema": {
+        "$ref": "#/entities/PlayerAssignment"
+      },
+      "description": "Private per-player role and secret word assignments readable only by that player."
+    },
+    "/rooms/{roomCode}/hostSecrets/{secretId}": {
+      "schema": {
+        "$ref": "#/entities/HostRoundSecret"
+      },
+      "description": "Host-only active round secret word and impostor list."
+    },
+    "/rooms/{roomCode}/secretActions/{playerUid}": {
+      "schema": {
+        "$ref": "#/entities/SecretRoundAction"
+      },
+      "description": "Private per-player killer target and agent prediction choices."
+    }
+  }
+}
