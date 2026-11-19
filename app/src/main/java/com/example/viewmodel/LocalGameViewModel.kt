@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.audio.SoundCuePlayer
 import com.example.data.CryptoRandom
+import com.example.data.EmergencyMeetingAlert
 import com.example.data.GameMode
 import com.example.data.LocalPlayer
 import com.example.data.PlayerRole
@@ -73,6 +74,7 @@ data class LocalGameUiState(
     val roundDeltas: Map<String, Int> = emptyMap(),
     val roundVoteCounts: Map<String, Int> = emptyMap(),
     val usedWords: Set<String> = emptySet(),
+    val emergencyMeeting: EmergencyMeetingAlert = EmergencyMeetingAlert(),
     val errorBanner: String? = null
 )
 
@@ -82,6 +84,7 @@ class LocalGameViewModel : ViewModel() {
     val uiState: StateFlow<LocalGameUiState> = _uiState.asStateFlow()
 
     private var timerJob: Job? = null
+    private var emergencyJob: Job? = null
 
     fun clearError() {
         _uiState.update { it.copy(errorBanner = null) }
@@ -121,6 +124,31 @@ class LocalGameViewModel : ViewModel() {
                 return@update curr.copy(errorBanner = "At least 2 players are required.")
             }
             val updatedPlayers = curr.players.filterNot { it.id == playerId }
+            val maxImp = (updatedPlayers.size - 1).coerceAtLeast(1)
+            curr.copy(
+                players = updatedPlayers,
+                impostorCount = curr.impostorCount.coerceIn(1, maxImp),
+                errorBanner = null
+            )
+        }
+    }
+
+    fun setPlayerCount(targetCount: Int) {
+        val clampedCount = targetCount.coerceIn(2, 16)
+        _uiState.update { curr ->
+            val updatedPlayers = if (clampedCount == curr.players.size) {
+                curr.players
+            } else if (clampedCount < curr.players.size) {
+                curr.players.take(clampedCount)
+            } else {
+                val extras = (curr.players.size + 1..clampedCount).map { idx ->
+                    LocalPlayer(
+                        id = UUID.randomUUID().toString().take(8),
+                        name = "Player $idx"
+                    )
+                }
+                curr.players + extras
+            }
             val maxImp = (updatedPlayers.size - 1).coerceAtLeast(1)
             curr.copy(
                 players = updatedPlayers,
@@ -349,15 +377,61 @@ class LocalGameViewModel : ViewModel() {
         }
     }
 
+    fun triggerEmergencyMeeting(
+        reporterId: String? = null,
+        reason: String = "Suspicious activity reported!"
+    ) {
+        val curr = _uiState.value
+        if (curr.phase != LocalPhase.PLAYING || curr.emergencyMeeting.isActive) return
+        stopTimer()
+        emergencyJob?.cancel()
+        val activeUid = curr.turnOrderIds.getOrNull(curr.currentTurnIndex)
+        val reporterName = curr.players.firstOrNull { it.id == reporterId }?.name
+            ?: curr.players.firstOrNull { it.id == activeUid }?.name
+            ?: "Crewmate"
+        SoundCuePlayer.playEmergencyMeetingCue()
+        _uiState.update {
+            it.copy(
+                isTimerPaused = true,
+                emergencyMeeting = EmergencyMeetingAlert(
+                    isActive = true,
+                    reporterName = reporterName,
+                    reason = reason,
+                    countdownSeconds = 2
+                )
+            )
+        }
+        emergencyJob = viewModelScope.launch {
+            delay(1000L)
+            if (_uiState.value.emergencyMeeting.isActive) {
+                _uiState.update { state ->
+                    state.copy(emergencyMeeting = state.emergencyMeeting.copy(countdownSeconds = 1))
+                }
+            }
+            delay(1000L)
+            if (_uiState.value.emergencyMeeting.isActive) {
+                goToVoting()
+            }
+        }
+    }
+
+    fun dismissEmergencyMeetingAndVote() {
+        if (!_uiState.value.emergencyMeeting.isActive) return
+        goToVoting()
+    }
+
     fun goToVoting() {
         stopTimer()
+        emergencyJob?.cancel()
+        emergencyJob = null
         _uiState.update {
             it.copy(
                 phase = LocalPhase.VOTING,
                 isTimerPaused = true,
                 votesByPlayerId = emptyMap(),
                 votingPlayerIndex = 0,
-                isVoteCardRevealed = false
+                isVoteCardRevealed = false,
+                emergencyMeeting = EmergencyMeetingAlert()
             )
         }
     }
@@ -471,5 +545,6 @@ class LocalGameViewModel : ViewModel() {
     override fun onCleared() {
         super.onCleared()
         stopTimer()
+        emergencyJob?.cancel()
     }
 }

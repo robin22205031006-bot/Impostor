@@ -4,10 +4,13 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.audio.SoundCuePlayer
 import com.example.data.CryptoRandom
+import com.example.data.EmergencyMeetingAlert
 import com.example.data.GamePhase
 import com.example.data.GameState
 import com.example.data.LocalPlayer
+import com.example.data.LocationWordRepository
 import com.example.data.PlayerRole
+import com.example.data.RoundOutcome
 import com.example.data.TurnStatus
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -18,15 +21,55 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.util.UUID
 
-class GameViewModel : ViewModel() {
+class GameViewModel(
+    private val locationRepository: LocationWordRepository = LocationWordRepository
+) : ViewModel() {
 
     private val _gameState = MutableStateFlow(GameState())
     val gameState: StateFlow<GameState> = _gameState.asStateFlow()
 
     private var timerJob: Job? = null
+    private var emergencyJob: Job? = null
 
     init {
         assignRoles()
+        selectNewLocationWord()
+        _gameState.update { curr ->
+            curr.copy(
+                totalVotesPerPlayer = computeTotalVotesPerPlayer(curr.players, curr.votesByPlayerId),
+                emergencyAlertSoundEnabled = SoundCuePlayer.emergencyAlertSoundEnabled.value,
+                soundEffectsEnabled = SoundCuePlayer.soundEnabled.value
+            )
+        }
+    }
+
+    fun setPlayerCount(targetCount: Int) {
+        val clampedCount = targetCount.coerceIn(2, 16)
+        _gameState.update { curr ->
+            val updatedPlayers = if (clampedCount == curr.players.size) {
+                curr.players
+            } else if (clampedCount < curr.players.size) {
+                curr.players.take(clampedCount)
+            } else {
+                val extras = (curr.players.size + 1..clampedCount).map { idx ->
+                    LocalPlayer(
+                        id = UUID.randomUUID().toString().take(8),
+                        name = "Player $idx"
+                    )
+                }
+                curr.players + extras
+            }
+            val validIds = updatedPlayers.map { it.id }.toSet()
+            val maxImpostors = (updatedPlayers.size - 1).coerceAtLeast(1)
+            val clampedImp = curr.impostorCount.coerceIn(1, maxImpostors)
+            curr.copy(
+                players = updatedPlayers,
+                impostorCount = clampedImp,
+                playerRoles = buildRoleAssignments(updatedPlayers, clampedImp),
+                revealedRolePlayerIds = curr.revealedRolePlayerIds.intersect(validIds),
+                totalVotesPerPlayer = computeTotalVotesPerPlayer(updatedPlayers, emptyMap())
+            )
+        }
     }
 
     fun setImpostorCount(count: Int) {
@@ -48,6 +91,13 @@ class GameViewModel : ViewModel() {
                 impostorCount = clamped,
                 playerRoles = buildRoleAssignments(curr.players, clamped)
             )
+        }
+    }
+
+    fun selectNewLocationWord() {
+        _gameState.update { curr ->
+            val exclude = curr.locationWord?.word?.let { setOf(it) } ?: emptySet()
+            curr.copy(locationWord = locationRepository.pickRandomLocationWord(excludeWords = exclude))
         }
     }
 
@@ -88,7 +138,8 @@ class GameViewModel : ViewModel() {
             curr.copy(
                 players = updatedPlayers,
                 impostorCount = clampedImp,
-                playerRoles = buildRoleAssignments(updatedPlayers, clampedImp)
+                playerRoles = buildRoleAssignments(updatedPlayers, clampedImp),
+                totalVotesPerPlayer = computeTotalVotesPerPlayer(updatedPlayers, emptyMap())
             )
         }
     }
@@ -103,7 +154,8 @@ class GameViewModel : ViewModel() {
                 players = updatedPlayers,
                 impostorCount = clampedImp,
                 playerRoles = buildRoleAssignments(updatedPlayers, clampedImp),
-                revealedRolePlayerIds = curr.revealedRolePlayerIds - playerId
+                revealedRolePlayerIds = curr.revealedRolePlayerIds - playerId,
+                totalVotesPerPlayer = computeTotalVotesPerPlayer(updatedPlayers, emptyMap())
             )
         }
     }
@@ -118,8 +170,19 @@ class GameViewModel : ViewModel() {
         }
     }
 
+    fun setEmergencyAlertSoundEnabled(enabled: Boolean) {
+        SoundCuePlayer.setEmergencyAlertSoundEnabled(enabled)
+        _gameState.update { it.copy(emergencyAlertSoundEnabled = enabled) }
+    }
+
+    fun setSoundEffectsEnabled(enabled: Boolean) {
+        SoundCuePlayer.setSoundEnabled(enabled)
+        _gameState.update { it.copy(soundEffectsEnabled = enabled) }
+    }
+
     fun startDiscussion() {
         stopTimer()
+        stopEmergencyJob()
         _gameState.update { curr ->
             val maxImpostors = (curr.players.size - 1).coerceAtLeast(1)
             val clampedImp = curr.impostorCount.coerceIn(1, maxImpostors)
@@ -128,16 +191,23 @@ class GameViewModel : ViewModel() {
             } else {
                 buildRoleAssignments(curr.players, clampedImp)
             }
+            val selectedLocation = curr.locationWord ?: locationRepository.pickRandomLocationWord()
             val turnOrder = CryptoRandom.shuffled(curr.players.map { it.id })
             curr.copy(
                 phase = GamePhase.DISCUSSION,
                 impostorCount = clampedImp,
                 playerRoles = roles,
+                locationWord = selectedLocation,
                 turnOrderIds = turnOrder,
                 currentTurnIndex = 0,
                 turnStatus = TurnStatus.ACTIVE,
                 currentTimerCount = curr.turnDurationSeconds,
-                votesByPlayerId = emptyMap()
+                votesByPlayerId = emptyMap(),
+                totalVotesPerPlayer = computeTotalVotesPerPlayer(curr.players, emptyMap()),
+                votedOutPlayerIds = emptyList(),
+                roundOutcome = RoundOutcome.PENDING,
+                outcomeReason = "",
+                emergencyMeeting = EmergencyMeetingAlert()
             )
         }
         startTimerLoop()
@@ -145,7 +215,7 @@ class GameViewModel : ViewModel() {
 
     fun toggleTimerPause() {
         _gameState.update { curr ->
-            if (curr.phase != GamePhase.DISCUSSION) return@update curr
+            if (curr.phase != GamePhase.DISCUSSION || curr.emergencyMeeting.isActive) return@update curr
             val nextStatus = when (curr.turnStatus) {
                 TurnStatus.ACTIVE -> TurnStatus.PAUSED
                 TurnStatus.PAUSED -> if (curr.currentTimerCount > 0) TurnStatus.ACTIVE else TurnStatus.EXPIRED
@@ -172,13 +242,65 @@ class GameViewModel : ViewModel() {
         }
     }
 
+    fun triggerEmergencyMeeting(
+        reporterId: String? = null,
+        reason: String = "Suspicious activity reported!"
+    ) {
+        val curr = _gameState.value
+        if (curr.phase != GamePhase.DISCUSSION || curr.emergencyMeeting.isActive) return
+        stopTimer()
+        stopEmergencyJob()
+
+        val reporterName = curr.players.firstOrNull { it.id == reporterId }?.name
+            ?: curr.activeTurnPlayer?.name
+            ?: "Crewmate"
+
+        SoundCuePlayer.playEmergencyMeetingCue()
+
+        _gameState.update { state ->
+            state.copy(
+                turnStatus = TurnStatus.PAUSED,
+                emergencyMeeting = EmergencyMeetingAlert(
+                    isActive = true,
+                    reporterName = reporterName,
+                    reason = reason,
+                    countdownSeconds = 2
+                )
+            )
+        }
+
+        emergencyJob = viewModelScope.launch {
+            delay(1000L)
+            if (_gameState.value.emergencyMeeting.isActive) {
+                _gameState.update { state ->
+                    state.copy(emergencyMeeting = state.emergencyMeeting.copy(countdownSeconds = 1))
+                }
+            }
+            delay(1000L)
+            if (_gameState.value.emergencyMeeting.isActive) {
+                startVoting()
+            }
+        }
+    }
+
+    fun dismissEmergencyMeetingAndVote() {
+        if (!_gameState.value.emergencyMeeting.isActive) return
+        startVoting()
+    }
+
     fun startVoting() {
         stopTimer()
+        stopEmergencyJob()
         _gameState.update { curr ->
             curr.copy(
                 phase = GamePhase.VOTING,
                 turnStatus = TurnStatus.IDLE,
-                votesByPlayerId = emptyMap()
+                votesByPlayerId = emptyMap(),
+                totalVotesPerPlayer = computeTotalVotesPerPlayer(curr.players, emptyMap()),
+                votedOutPlayerIds = emptyList(),
+                roundOutcome = RoundOutcome.PENDING,
+                outcomeReason = "",
+                emergencyMeeting = EmergencyMeetingAlert()
             )
         }
     }
@@ -187,19 +309,69 @@ class GameViewModel : ViewModel() {
         if (voterId == suspectId) return
         _gameState.update { curr ->
             if (curr.phase != GamePhase.VOTING) return@update curr
-            curr.copy(votesByPlayerId = curr.votesByPlayerId + (voterId to suspectId))
+            val updatedVotes = curr.votesByPlayerId + (voterId to suspectId)
+            curr.copy(
+                votesByPlayerId = updatedVotes,
+                totalVotesPerPlayer = computeTotalVotesPerPlayer(curr.players, updatedVotes)
+            )
         }
+    }
+
+    fun finalizeVoting() {
+        stopTimer()
+        stopEmergencyJob()
+        var impostorCaughtForCue = false
+        _gameState.update { curr ->
+            val tally = computeTotalVotesPerPlayer(curr.players, curr.votesByPlayerId)
+            val maxVotes = tally.values.maxOrNull() ?: 0
+            val topIds = if (maxVotes > 0) {
+                tally.filterValues { it == maxVotes }.keys.toList()
+            } else {
+                emptyList()
+            }
+            val impostorVotedOut = topIds.any { it in curr.impostorIds }
+            impostorCaughtForCue = impostorVotedOut
+            val outcome = if (impostorVotedOut) RoundOutcome.VICTORY else RoundOutcome.DEFEAT
+            val votedNames = curr.players.filter { it.id in topIds }.joinToString(", ") { it.name }
+            val reason = when {
+                topIds.isEmpty() -> "No votes were cast — the Impostors achieved their goal!"
+                impostorVotedOut -> "$votedNames was voted out — the Impostors have been eliminated!"
+                topIds.size > 1 -> "Tie vote ($votedNames) — the Impostors achieved their goal!"
+                else -> "$votedNames was ejected, but was innocent — the Impostors achieved their goal!"
+            }
+            curr.copy(
+                phase = GamePhase.RESULTS,
+                turnStatus = TurnStatus.IDLE,
+                totalVotesPerPlayer = tally,
+                votedOutPlayerIds = topIds,
+                roundOutcome = outcome,
+                outcomeReason = reason
+            )
+        }
+        SoundCuePlayer.playVotingResultsCue(crewWon = impostorCaughtForCue)
+    }
+
+    fun playNextRound() {
+        assignRoles()
+        selectNewLocationWord()
+        startDiscussion()
     }
 
     fun returnToLobby() {
         stopTimer()
+        stopEmergencyJob()
         _gameState.update { curr ->
             curr.copy(
                 phase = GamePhase.LOBBY,
                 turnStatus = TurnStatus.IDLE,
                 currentTurnIndex = 0,
                 currentTimerCount = curr.turnDurationSeconds,
-                votesByPlayerId = emptyMap()
+                votesByPlayerId = emptyMap(),
+                totalVotesPerPlayer = computeTotalVotesPerPlayer(curr.players, emptyMap()),
+                votedOutPlayerIds = emptyList(),
+                roundOutcome = RoundOutcome.PENDING,
+                outcomeReason = "",
+                emergencyMeeting = EmergencyMeetingAlert()
             )
         }
     }
@@ -215,6 +387,14 @@ class GameViewModel : ViewModel() {
                 turnStatus = if (nextSec == 0) TurnStatus.EXPIRED else TurnStatus.ACTIVE
             )
         }
+    }
+
+    private fun computeTotalVotesPerPlayer(
+        players: List<LocalPlayer>,
+        votesByPlayerId: Map<String, String>
+    ): Map<String, Int> {
+        val counts = votesByPlayerId.values.groupingBy { it }.eachCount()
+        return players.associate { player -> player.id to (counts[player.id] ?: 0) }
     }
 
     private fun buildRoleAssignments(
@@ -238,7 +418,7 @@ class GameViewModel : ViewModel() {
             while (true) {
                 delay(1000L)
                 val curr = _gameState.value
-                if (curr.phase != GamePhase.DISCUSSION) break
+                if (curr.phase != GamePhase.DISCUSSION || curr.emergencyMeeting.isActive) break
                 if (curr.turnStatus == TurnStatus.ACTIVE && curr.currentTimerCount > 0) {
                     val nextSec = (curr.currentTimerCount - 1).coerceAtLeast(0)
                     _gameState.update { state ->
@@ -249,6 +429,14 @@ class GameViewModel : ViewModel() {
                     }
                     if (nextSec == 0) {
                         SoundCuePlayer.playTimerExpiredCue()
+                        delay(1200L)
+                        val afterWait = _gameState.value
+                        if (afterWait.phase == GamePhase.DISCUSSION &&
+                            afterWait.turnStatus == TurnStatus.EXPIRED &&
+                            !afterWait.emergencyMeeting.isActive
+                        ) {
+                            nextTurn()
+                        }
                     }
                 }
             }
@@ -260,8 +448,14 @@ class GameViewModel : ViewModel() {
         timerJob = null
     }
 
+    private fun stopEmergencyJob() {
+        emergencyJob?.cancel()
+        emergencyJob = null
+    }
+
     override fun onCleared() {
         super.onCleared()
         stopTimer()
+        stopEmergencyJob()
     }
 }

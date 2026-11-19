@@ -164,7 +164,7 @@ object WordBank {
         WordEntry("Pathaan", "Bollywood", "Action", "Vault", "Freeze"),
         WordEntry("Jawan", "Bollywood", "Action", "Bandage", "Signal"),
         WordEntry("K3G", "Bollywood", "Cinema", "Chopper", "Mansion")
-    )
+    ) + LocationWordRepository.locationWords
 
     @Volatile
     private var loadedEntries: List<WordEntry>? = null

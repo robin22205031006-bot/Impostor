@@ -99,5 +99,18 @@
   {"word": "Dangal", "category": "Bollywood", "genre": "Drama", "hint": "Mat", "expertHint": "Dawn"},
   {"word": "Pathaan", "category": "Bollywood", "genre": "Action", "hint": "Vault", "expertHint": "Freeze"},
   {"word": "Jawan", "category": "Bollywood", "genre": "Action", "hint": "Bandage", "expertHint": "Signal"},
-  {"word": "K3G", "category": "Bollywood", "genre": "Cinema", "hint": "Chopper", "expertHint": "Mansion"}
+  {"word": "K3G", "category": "Bollywood", "genre": "Cinema", "hint": "Chopper", "expertHint": "Mansion"},
+
+  {"word": "Space Station", "category": "Locations", "genre": "Sci-Fi", "hint": "Orbit", "expertHint": "Airlock"},
+  {"word": "Submarine", "category": "Locations", "genre": "Maritime", "hint": "Periscope", "expertHint": "Depth"},
+  {"word": "Hospital", "category": "Locations", "genre": "Civic", "hint": "Ward", "expertHint": "Pulse"},
+  {"word": "Casino", "category": "Locations", "genre": "Nightlife", "hint": "Chips", "expertHint": "Velvet"},
+  {"word": "Pirate Ship", "category": "Locations", "genre": "Adventure", "hint": "Mast", "expertHint": "Plank"},
+  {"word": "Art Museum", "category": "Locations", "genre": "Culture", "hint": "Gallery", "expertHint": "Frame"},
+  {"word": "Movie Theater", "category": "Locations", "genre": "Entertainment", "hint": "Projector", "expertHint": "Popcorn"},
+  {"word": "Ski Resort", "category": "Locations", "genre": "Alpine", "hint": "Gondola", "expertHint": "Powder"},
+  {"word": "Train Station", "category": "Locations", "genre": "Transit", "hint": "Platform", "expertHint": "Whistle"},
+  {"word": "Volcano Lab", "category": "Locations", "genre": "Science", "hint": "Magma", "expertHint": "Sensor"},
+  {"word": "Cruise Ship", "category": "Locations", "genre": "Voyage", "hint": "Deck", "expertHint": "Horizon"},
+  {"word": "Underground Bunker", "category": "Locations", "genre": "Stealth", "hint": "Hatch", "expertHint": "Ration"}
 ]

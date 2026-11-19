@@ -2,12 +2,15 @@ package com.example
 
 import android.content.Context
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.test.core.app.ApplicationProvider
+import com.example.audio.SoundCuePlayer
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -40,11 +43,58 @@ class ExampleRobolectricTest {
         composeRule.onNodeWithTag("start_discussion_phase_button").performClick()
         composeRule.onNodeWithTag("circular_countdown_timer").assertIsDisplayed()
 
-        composeRule.onNodeWithTag("go_to_voting_phase_button").performScrollTo().performClick()
-        composeRule.onNodeWithTag("return_to_lobby_button").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("go_to_voting_phase_button").performClick()
+        composeRule.onNodeWithTag("return_to_lobby_button").assertIsDisplayed()
 
         composeRule.onNodeWithTag("return_to_lobby_button").performClick()
         composeRule.onNodeWithTag("tab_pass_and_play").performClick()
         composeRule.onNodeWithTag("game_setup_screen").assertIsDisplayed()
+    }
+
+    @Test
+    fun `emergency meeting overlay transitions to voting screen and victory or defeat outcome screen`() {
+        composeRule.onNodeWithTag("tab_role_lobby").performClick()
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag("lobby_increase_players_button").performClick()
+        composeRule.onNodeWithTag("start_discussion_phase_button").performClick()
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag("emergency_meeting_button").performClick()
+        composeRule.onNodeWithTag("report_player_p1").performClick()
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag("emergency_meeting_overlay").assertIsDisplayed()
+        composeRule.onNodeWithTag("emergency_proceed_to_vote_button").performClick()
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag("voting_screen").assertIsDisplayed()
+        composeRule.onNodeWithTag("voting_player_card_p2").performScrollTo().performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("reveal_voting_verdict_button").assertIsDisplayed().performClick()
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag("round_outcome_screen").assertIsDisplayed()
+        composeRule.onNodeWithTag("outcome_headline_text").assertIsDisplayed()
+    }
+
+    @Test
+    fun `settings menu toggles emergency alert sound and updates discussion timer duration`() {
+        try {
+            composeRule.onNodeWithTag("settings_menu_button").performClick()
+            composeRule.waitForIdle()
+
+            composeRule.onNodeWithTag("settings_menu_sheet").assertIsDisplayed()
+            composeRule.onNodeWithTag("settings_emergency_sound_switch").performClick()
+            composeRule.waitForIdle()
+            assertFalse(SoundCuePlayer.emergencyAlertSoundEnabled.value)
+
+            composeRule.onNodeWithTag("settings_timer_preset_60").performScrollTo().performClick()
+            composeRule.waitForIdle()
+            composeRule.onNodeWithTag("settings_timer_duration_text").assertTextEquals("60s")
+        } finally {
+            SoundCuePlayer.setEmergencyAlertSoundEnabled(true)
+            SoundCuePlayer.setSoundEnabled(true)
+        }
     }
 }

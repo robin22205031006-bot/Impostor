@@ -5,6 +5,7 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
@@ -42,7 +43,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.HowToVote
@@ -54,8 +54,6 @@ import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -93,14 +91,20 @@ import com.example.data.GameState
 import com.example.data.LocalPlayer
 import com.example.data.PlayerRole
 import com.example.data.TurnStatus
+import androidx.compose.material.icons.filled.Campaign
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.NotificationsActive
+import androidx.compose.material3.AlertDialog
 import androidx.compose.ui.platform.LocalContext
 import com.example.ui.components.CircularCountdownTimer
+import com.example.ui.components.EmergencyMeetingOverlay
 import com.example.ui.components.GameRoleIdentity
 import com.example.ui.components.GlassSectionCard
 import com.example.ui.components.PulsingStatusDot
 import com.example.ui.components.RoleEmblemBadge
+import com.example.ui.components.RoundOutcomeScreen
 import com.example.ui.components.TurnTimerEventBus
+import com.example.ui.components.VotingScreen
 import com.example.ui.components.style
 import com.example.ui.theme.LocalImpostorPalette
 import com.example.viewmodel.GameViewModel
@@ -118,8 +122,10 @@ fun GameLobbyScreen(
 
     GameLobbyContent(
         state = state,
+        onSetPlayerCount = viewModel::setPlayerCount,
         onSetImpostorCount = viewModel::setImpostorCount,
         onShuffleRoles = viewModel::assignRoles,
+        onShuffleLocation = viewModel::selectNewLocationWord,
         onToggleRoleReveal = viewModel::toggleRoleReveal,
         onRevealAll = viewModel::revealAllRoles,
         onHideAll = viewModel::hideAllRoles,
@@ -128,8 +134,12 @@ fun GameLobbyScreen(
         onStartDiscussion = viewModel::startDiscussion,
         onToggleTimerPause = viewModel::toggleTimerPause,
         onNextTurn = viewModel::nextTurn,
+        onTriggerEmergencyMeeting = viewModel::triggerEmergencyMeeting,
+        onDismissEmergencyMeeting = viewModel::dismissEmergencyMeetingAndVote,
         onStartVoting = viewModel::startVoting,
         onCastVote = viewModel::castVote,
+        onFinalizeVoting = viewModel::finalizeVoting,
+        onPlayAgain = viewModel::playNextRound,
         onReturnToLobby = viewModel::returnToLobby,
         modifier = modifier
     )
@@ -138,8 +148,10 @@ fun GameLobbyScreen(
 @Composable
 fun GameLobbyContent(
     state: GameState,
+    onSetPlayerCount: (Int) -> Unit = {},
     onSetImpostorCount: (Int) -> Unit,
     onShuffleRoles: () -> Unit,
+    onShuffleLocation: () -> Unit = {},
     onToggleRoleReveal: (String) -> Unit,
     onRevealAll: () -> Unit,
     onHideAll: () -> Unit,
@@ -148,24 +160,29 @@ fun GameLobbyContent(
     onStartDiscussion: () -> Unit,
     onToggleTimerPause: () -> Unit,
     onNextTurn: () -> Unit,
+    onTriggerEmergencyMeeting: (String?, String) -> Unit = { _, _ -> },
+    onDismissEmergencyMeeting: () -> Unit = {},
     onStartVoting: () -> Unit,
     onCastVote: (String, String) -> Unit,
+    onFinalizeVoting: () -> Unit = {},
+    onPlayAgain: () -> Unit = {},
     onReturnToLobby: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val palette = LocalImpostorPalette.current
 
-    Column(
+    Box(
         modifier = modifier
             .fillMaxSize()
             .testTag("game_lobby_screen")
     ) {
-        // Phase Stepper Header: Lobby -> Discussion -> Voting
+        Column(modifier = Modifier.fillMaxSize()) {
+        // Phase Stepper Header: Lobby -> Discussion -> Voting -> Results
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                .padding(horizontal = 20.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             GamePhase.entries.forEach { phase ->
                 val isActive = state.phase == phase
@@ -173,6 +190,7 @@ fun GameLobbyContent(
                     GamePhase.LOBBY -> palette.normalAccent
                     GamePhase.DISCUSSION -> palette.cyanAccent
                     GamePhase.VOTING -> palette.impostorAccent
+                    GamePhase.RESULTS -> palette.timerAccent
                 }
                 val bgColor by animateColorAsState(
                     targetValue = if (isActive) phaseAccent.copy(alpha = 0.20f) else MaterialTheme.colorScheme.surfaceContainer,
@@ -184,24 +202,24 @@ fun GameLobbyContent(
                 )
                 Surface(
                     color = bgColor,
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(10.dp),
                     border = BorderStroke(if (isActive) 1.5.dp else 1.dp, borderColor),
                     modifier = Modifier
                         .weight(1f)
                         .testTag("phase_pill_${phase.name.lowercase()}")
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.Center
                     ) {
                         if (isActive) {
                             PulsingStatusDot(color = phaseAccent)
-                            Spacer(modifier = Modifier.width(6.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
                         }
                         Text(
                             text = phase.title.uppercase(),
-                            style = MaterialTheme.typography.labelMedium,
+                            style = MaterialTheme.typography.labelSmall,
                             fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium,
                             color = if (isActive) phaseAccent else MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
@@ -224,8 +242,10 @@ fun GameLobbyContent(
             when (phase) {
                 GamePhase.LOBBY -> LobbyPhaseView(
                     state = state,
+                    onSetPlayerCount = onSetPlayerCount,
                     onSetImpostorCount = onSetImpostorCount,
                     onShuffleRoles = onShuffleRoles,
+                    onShuffleLocation = onShuffleLocation,
                     onToggleRoleReveal = onToggleRoleReveal,
                     onRevealAll = onRevealAll,
                     onHideAll = onHideAll,
@@ -238,16 +258,36 @@ fun GameLobbyContent(
                     state = state,
                     onToggleTimerPause = onToggleTimerPause,
                     onNextTurn = onNextTurn,
+                    onTriggerEmergencyMeeting = onTriggerEmergencyMeeting,
                     onStartVoting = onStartVoting,
                     onReturnToLobby = onReturnToLobby
                 )
 
-                GamePhase.VOTING -> VotingPhaseView(
+                GamePhase.VOTING -> VotingScreen(
                     state = state,
                     onCastVote = onCastVote,
+                    onFinalizeVoting = onFinalizeVoting,
+                    onReturnToLobby = onReturnToLobby
+                )
+
+                GamePhase.RESULTS -> RoundOutcomeScreen(
+                    state = state,
+                    onPlayAgain = onPlayAgain,
                     onReturnToLobby = onReturnToLobby
                 )
             }
+        }
+        }
+
+        AnimatedVisibility(
+            visible = state.emergencyMeeting.isActive,
+            enter = fadeIn(tween(180)),
+            exit = fadeOut(tween(180))
+        ) {
+            EmergencyMeetingOverlay(
+                alert = state.emergencyMeeting,
+                onProceedNow = onDismissEmergencyMeeting
+            )
         }
     }
 }
@@ -255,8 +295,10 @@ fun GameLobbyContent(
 @Composable
 private fun LobbyPhaseView(
     state: GameState,
+    onSetPlayerCount: (Int) -> Unit,
     onSetImpostorCount: (Int) -> Unit,
     onShuffleRoles: () -> Unit,
+    onShuffleLocation: () -> Unit,
     onToggleRoleReveal: (String) -> Unit,
     onRevealAll: () -> Unit,
     onHideAll: () -> Unit,
@@ -268,93 +310,151 @@ private fun LobbyPhaseView(
     val maxImpostors = (state.players.size - 1).coerceAtLeast(1)
     val allRevealed = state.players.isNotEmpty() && state.revealedRolePlayerIds.size >= state.players.size
     var newPlayerName by remember { mutableStateOf("") }
+    var showLocationPreview by remember { mutableStateOf(false) }
 
     Column(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
             modifier = Modifier.weight(1f),
-            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 6.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            // Compact Impostor Count & Shuffle Header Card
+            // Compact Session Setup (Players + Impostors + Role Actions) Card
             item {
-                GlassSectionCard(
-                    title = "IMPOSTORS (1 TO $maxImpostors)",
-                    icon = Icons.Filled.VisibilityOff,
-                    accentColor = palette.impostorAccent,
-                    trailing = {
-                        Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                            TextButton(
-                                onClick = onShuffleRoles,
-                                modifier = Modifier.testTag("lobby_shuffle_roles_button")
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.Refresh,
-                                    contentDescription = "Re-deal roles",
-                                    tint = palette.cyanAccent,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Deal", color = palette.cyanAccent)
-                            }
-                            TextButton(
-                                onClick = { if (allRevealed) onHideAll() else onRevealAll() },
-                                modifier = Modifier.testTag("lobby_toggle_all_roles_button")
-                            ) {
-                                Icon(
-                                    imageVector = if (allRevealed) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
-                                    contentDescription = if (allRevealed) "Hide all roles" else "Reveal all roles",
-                                    tint = palette.cyanAccent,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = if (allRevealed) "Hide All" else "Reveal All",
-                                    color = palette.cyanAccent
-                                )
-                            }
-                        }
-                    }
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.90f),
+                    shape = RoundedCornerShape(18.dp),
+                    border = BorderStroke(1.dp, palette.impostorAccent.copy(alpha = 0.45f)),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                    Column(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        AnimatedContent(
-                            targetState = state.impostorCount,
-                            transitionSpec = {
-                                (slideInVertically { -it / 2 } + fadeIn()) togetherWith
-                                    (slideOutVertically { it / 2 } + fadeOut())
-                            },
-                            label = "lobby_impostor_count"
-                        ) { count ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
                             Text(
-                                text = "$count Impostor${if (count > 1) "s" else ""}",
-                                style = MaterialTheme.typography.titleLarge,
-                                color = palette.impostorGlow,
-                                modifier = Modifier.testTag("lobby_impostor_count_text")
+                                text = "SESSION SETUP",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                        }
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedButton(
-                                onClick = { onSetImpostorCount(state.impostorCount - 1) },
-                                enabled = state.impostorCount > 1,
-                                modifier = Modifier
-                                    .size(48.dp)
-                                    .testTag("lobby_decrease_impostor_button"),
-                                contentPadding = PaddingValues(0.dp)
-                            ) {
-                                Text("-", style = MaterialTheme.typography.titleLarge)
+                            Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                                TextButton(
+                                    onClick = onShuffleRoles,
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                                    modifier = Modifier.testTag("lobby_shuffle_roles_button")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Refresh,
+                                        contentDescription = "Re-deal roles",
+                                        tint = palette.cyanAccent,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Deal", color = palette.cyanAccent)
+                                }
+                                TextButton(
+                                    onClick = { if (allRevealed) onHideAll() else onRevealAll() },
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                                    modifier = Modifier.testTag("lobby_toggle_all_roles_button")
+                                ) {
+                                    Icon(
+                                        imageVector = if (allRevealed) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                                        contentDescription = if (allRevealed) "Hide all roles" else "Reveal all roles",
+                                        tint = palette.cyanAccent,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = if (allRevealed) "Hide All" else "Reveal All",
+                                        color = palette.cyanAccent
+                                    )
+                                }
                             }
-                            OutlinedButton(
-                                onClick = { onSetImpostorCount(state.impostorCount + 1) },
-                                enabled = state.impostorCount < maxImpostors,
-                                modifier = Modifier
-                                    .size(48.dp)
-                                    .testTag("lobby_increase_impostor_button"),
-                                contentPadding = PaddingValues(0.dp)
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
-                                Text("+", style = MaterialTheme.typography.titleLarge)
+                                OutlinedButton(
+                                    onClick = { onSetPlayerCount(state.players.size - 1) },
+                                    enabled = state.players.size > 2,
+                                    modifier = Modifier
+                                        .size(48.dp)
+                                        .testTag("lobby_decrease_players_button"),
+                                    contentPadding = PaddingValues(0.dp)
+                                ) {
+                                    Text("-", style = MaterialTheme.typography.titleMedium)
+                                }
+                                Text(
+                                    text = "${state.players.size}P",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = palette.cyanAccent,
+                                    modifier = Modifier
+                                        .padding(horizontal = 2.dp)
+                                        .testTag("lobby_player_count_text")
+                                )
+                                OutlinedButton(
+                                    onClick = { onSetPlayerCount(state.players.size + 1) },
+                                    enabled = state.players.size < 16,
+                                    modifier = Modifier
+                                        .size(48.dp)
+                                        .testTag("lobby_increase_players_button"),
+                                    contentPadding = PaddingValues(0.dp)
+                                ) {
+                                    Text("+", style = MaterialTheme.typography.titleMedium)
+                                }
+                            }
+
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                OutlinedButton(
+                                    onClick = { onSetImpostorCount(state.impostorCount - 1) },
+                                    enabled = state.impostorCount > 1,
+                                    modifier = Modifier
+                                        .size(48.dp)
+                                        .testTag("lobby_decrease_impostor_button"),
+                                    contentPadding = PaddingValues(0.dp)
+                                ) {
+                                    Text("-", style = MaterialTheme.typography.titleMedium)
+                                }
+                                AnimatedContent(
+                                    targetState = state.impostorCount,
+                                    transitionSpec = {
+                                        (slideInVertically { -it / 2 } + fadeIn()) togetherWith
+                                            (slideOutVertically { it / 2 } + fadeOut())
+                                    },
+                                    label = "lobby_impostor_count"
+                                ) { count ->
+                                    Text(
+                                        text = "${count}I",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        color = palette.impostorGlow,
+                                        modifier = Modifier
+                                            .padding(horizontal = 2.dp)
+                                            .testTag("lobby_impostor_count_text")
+                                    )
+                                }
+                                OutlinedButton(
+                                    onClick = { onSetImpostorCount(state.impostorCount + 1) },
+                                    enabled = state.impostorCount < maxImpostors,
+                                    modifier = Modifier
+                                        .size(48.dp)
+                                        .testTag("lobby_increase_impostor_button"),
+                                    contentPadding = PaddingValues(0.dp)
+                                ) {
+                                    Text("+", style = MaterialTheme.typography.titleMedium)
+                                }
                             }
                         }
                     }
@@ -368,11 +468,59 @@ private fun LobbyPhaseView(
                 GlowingLobbyRoleCard(
                     player = player,
                     assignedRole = assignedRole,
+                    locationWord = state.locationWord?.word,
                     isRevealed = isRevealed,
                     canRemove = state.players.size > 2,
                     onToggleReveal = { onToggleRoleReveal(player.id) },
                     onRemove = { onRemovePlayer(player.id) }
                 )
+            }
+
+            // Secret Location Word Card for Crewmates
+            item {
+                GlassSectionCard(
+                    title = "SECRET LOCATION WORD",
+                    icon = Icons.Filled.LocationOn,
+                    accentColor = palette.normalAccent,
+                    trailing = {
+                        Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                            TextButton(
+                                onClick = { showLocationPreview = !showLocationPreview },
+                                modifier = Modifier.testTag("toggle_location_preview_button")
+                            ) {
+                                Text(
+                                    text = if (showLocationPreview) "Hide" else "Peek",
+                                    color = palette.normalGlow
+                                )
+                            }
+                            TextButton(
+                                onClick = onShuffleLocation,
+                                modifier = Modifier.testTag("shuffle_location_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Refresh,
+                                    contentDescription = "New random location",
+                                    tint = palette.normalGlow,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("New", color = palette.normalGlow)
+                            }
+                        }
+                    }
+                ) {
+                    val loc = state.locationWord
+                    Text(
+                        text = if (showLocationPreview && loc != null) {
+                            "${loc.word} (${loc.genre})"
+                        } else {
+                            "Hidden — revealed on Crewmate cards above"
+                        },
+                        style = MaterialTheme.typography.titleMedium,
+                        color = if (showLocationPreview) palette.normalGlow else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.testTag("lobby_location_word_text")
+                    )
+                }
             }
 
             // Add Player Row
@@ -439,6 +587,7 @@ private fun LobbyPhaseView(
 private fun GlowingLobbyRoleCard(
     player: LocalPlayer,
     assignedRole: PlayerRole,
+    locationWord: String?,
     isRevealed: Boolean,
     canRemove: Boolean,
     onToggleReveal: () -> Unit,
@@ -523,16 +672,27 @@ private fun GlowingLobbyRoleCard(
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 AnimatedVisibility(visible = isRevealed) {
-                    Text(
-                        text = if (assignedRole == PlayerRole.IMPOSTOR) {
-                            "ROLE: IMPOSTOR"
-                        } else {
-                            "ROLE: AGENT (CREW)"
-                        },
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = style.glow
-                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(
+                            text = if (assignedRole == PlayerRole.IMPOSTOR) {
+                                "ROLE: IMPOSTOR"
+                            } else {
+                                "ROLE: CREWMATE"
+                            },
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = style.glow
+                        )
+                        Text(
+                            text = if (assignedRole == PlayerRole.IMPOSTOR) {
+                                "Location: ??? (Blend in!)"
+                            } else {
+                                "Location: ${locationWord ?: "Pending"}"
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
                 }
                 if (!isRevealed) {
                     Text(
@@ -647,6 +807,7 @@ private fun DiscussionPhaseView(
     state: GameState,
     onToggleTimerPause: () -> Unit,
     onNextTurn: () -> Unit,
+    onTriggerEmergencyMeeting: (String?, String) -> Unit,
     onStartVoting: () -> Unit,
     onReturnToLobby: () -> Unit
 ) {
@@ -654,13 +815,17 @@ private fun DiscussionPhaseView(
     val context = LocalContext.current
     val speakerName = state.activeTurnPlayer?.name ?: "Discussion"
     val isPaused = state.turnStatus == TurnStatus.PAUSED
+    var peekPlayer by remember { mutableStateOf<LocalPlayer?>(null) }
+    var showReporterDialog by remember { mutableStateOf(false) }
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(20.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        item {
+    Column(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .verticalScroll(rememberScrollState())
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
             GlassSectionCard(
                 title = "DISCUSSION • TURN ${state.currentTurnIndex + 1} OF ${state.turnOrderIds.size.coerceAtLeast(1)}",
                 icon = Icons.Filled.PlayArrow,
@@ -736,7 +901,7 @@ private fun DiscussionPhaseView(
                                     modifier = Modifier.size(18.dp)
                                 )
                                 Text(
-                                    text = "TIME EXPIRED FOR $speakerName — TAP NEXT TURN",
+                                    text = "TIME EXPIRED FOR $speakerName — ADVANCING...",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = palette.impostorGlow
                                 )
@@ -778,220 +943,194 @@ private fun DiscussionPhaseView(
                     }
                 }
             }
-        }
 
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                OutlinedButton(
-                    onClick = onReturnToLobby,
-                    shape = RoundedCornerShape(14.dp),
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(52.dp)
-                ) {
-                    Text("Lobby")
-                }
-                Button(
-                    onClick = onStartVoting,
-                    shape = RoundedCornerShape(14.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = palette.impostorAccent,
-                        contentColor = Color.White
-                    ),
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(52.dp)
-                        .testTag("go_to_voting_phase_button")
-                ) {
-                    Icon(Icons.Filled.HowToVote, contentDescription = null, modifier = Modifier.padding(end = 6.dp))
-                    Text("Voting Phase")
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun VotingPhaseView(
-    state: GameState,
-    onCastVote: (String, String) -> Unit,
-    onReturnToLobby: () -> Unit
-) {
-    val palette = LocalImpostorPalette.current
-    var activeVoterId by remember(state.players) {
-        mutableStateOf(state.players.firstOrNull()?.id.orEmpty())
-    }
-    var showVerdict by remember(state.votesByPlayerId) { mutableStateOf(false) }
-    val selectedSuspectId = state.votesByPlayerId[activeVoterId]
-    val voteCounts = remember(state.votesByPlayerId) {
-        state.votesByPlayerId.values.groupingBy { it }.eachCount()
-    }
-    val topCount = voteCounts.values.maxOrNull() ?: 0
-    val topVotedPlayers = remember(state.players, voteCounts, topCount) {
-        if (topCount > 0) state.players.filter { (voteCounts[it.id] ?: 0) == topCount } else emptyList()
-    }
-    val impostorCaught = topVotedPlayers.any { it.id in state.impostorIds }
-
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(20.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
-        item {
+            // Private Location Reference for Crewmates during Discussion
             GlassSectionCard(
-                title = "VOTING PHASE • SELECT VOTER",
-                icon = Icons.Filled.HowToVote,
-                accentColor = palette.impostorAccent
+                title = "PRIVATE LOCATION REFERENCE",
+                icon = Icons.Filled.LocationOn,
+                accentColor = palette.normalAccent
             ) {
+                Text(
+                    text = "Crewmates may tap their name privately to reference the secret location word (${state.locationWord?.category ?: "Locations"}).",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
                 Row(
                     modifier = Modifier.horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    state.players.forEach { voter ->
-                        FilterChip(
-                            selected = voter.id == activeVoterId,
-                            onClick = { activeVoterId = voter.id },
-                            label = { Text(voter.name) }
-                        )
-                    }
-                }
-                Text(
-                    text = "Tap a suspect below to cast vote (${state.votesByPlayerId.size}/${state.players.size} voted).",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-
-        items(state.players.filter { it.id != activeVoterId }, key = { it.id }) { candidate ->
-            val isSelected = selectedSuspectId == candidate.id
-            val count = voteCounts[candidate.id] ?: 0
-            Surface(
-                onClick = { onCastVote(activeVoterId, candidate.id) },
-                color = if (isSelected) palette.impostorSurface else MaterialTheme.colorScheme.surfaceContainer,
-                shape = RoundedCornerShape(14.dp),
-                border = BorderStroke(
-                    width = if (isSelected) 1.5.dp else 1.dp,
-                    color = if (isSelected) palette.impostorGlow else MaterialTheme.colorScheme.outlineVariant
-                ),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier.padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(
-                        text = candidate.name,
-                        style = MaterialTheme.typography.titleMedium,
-                        color = if (isSelected) palette.impostorGlow else MaterialTheme.colorScheme.onSurface
-                    )
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        if (count > 0) {
-                            Text(
-                                text = "$count vote${if (count == 1) "" else "s"}",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = palette.timerAccent
-                            )
-                        }
-                        if (isSelected) {
+                    state.players.forEach { player ->
+                        OutlinedButton(
+                            onClick = { peekPlayer = player },
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.testTag("discussion_peek_${player.id}")
+                        ) {
                             Icon(
-                                imageVector = Icons.Filled.Check,
-                                contentDescription = "Voted",
-                                tint = palette.impostorGlow
+                                imageVector = Icons.Filled.Visibility,
+                                contentDescription = "Peek ${player.name}'s location word",
+                                tint = palette.normalGlow,
+                                modifier = Modifier
+                                    .padding(end = 6.dp)
+                                    .size(16.dp)
                             )
+                            Text(player.name)
                         }
                     }
                 }
             }
         }
 
-        if (showVerdict && topVotedPlayers.isNotEmpty()) {
-            item {
-                val verdictIdentity = if (impostorCaught) GameRoleIdentity.AGENT else GameRoleIdentity.IMPOSTOR
-                val verdictStyle = verdictIdentity.style(palette)
-                Box(
+        Surface(
+            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
+            tonalElevation = 4.dp,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Button(
+                    onClick = { showReporterDialog = true },
+                    shape = RoundedCornerShape(16.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = palette.timerAccent,
+                        contentColor = Color.Black
+                    ),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .distinctRoleGlow(
-                            isGlowing = true,
-                            glowColor = verdictStyle.glow,
-                            accentColor = verdictStyle.accent
-                        )
-                        .clip(RoundedCornerShape(18.dp))
-                        .background(verdictStyle.deepSurface)
-                        .padding(16.dp)
-                        .testTag("lobby_voting_verdict_card")
+                        .height(50.dp)
+                        .testTag("emergency_meeting_button")
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        RoleEmblemBadge(
-                            identity = verdictIdentity,
-                            size = 44.dp,
-                            animated = true
-                        )
-                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text(
-                                text = if (impostorCaught) "IMPOSTOR CAUGHT!" else "IMPOSTOR SURVIVED!",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = verdictStyle.glow
-                            )
-                            Text(
-                                text = "Top voted (${topCount}): ${topVotedPlayers.joinToString(", ") { it.name }}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-                    }
+                    Icon(
+                        imageVector = Icons.Filled.Campaign,
+                        contentDescription = null,
+                        modifier = Modifier.padding(end = 8.dp)
+                    )
+                    Text(
+                        text = "Call Emergency Meeting / Report",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
-            }
-        }
 
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                if (state.votesByPlayerId.isNotEmpty()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = onReturnToLobby,
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp)
+                    ) {
+                        Text("Lobby")
+                    }
                     Button(
-                        onClick = { showVerdict = !showVerdict },
-                        shape = RoundedCornerShape(16.dp),
+                        onClick = onStartVoting,
+                        shape = RoundedCornerShape(14.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = palette.impostorAccent,
                             contentColor = Color.White
                         ),
                         modifier = Modifier
                             .weight(1f)
-                            .height(54.dp)
-                            .testTag("reveal_voting_verdict_button")
+                            .height(48.dp)
+                            .testTag("go_to_voting_phase_button")
                     ) {
-                        Text(if (showVerdict) "Hide Verdict" else "Reveal Verdict")
+                        Icon(Icons.Filled.HowToVote, contentDescription = null, modifier = Modifier.padding(end = 6.dp))
+                        Text("Voting Phase")
                     }
-                }
-                Button(
-                    onClick = onReturnToLobby,
-                    shape = RoundedCornerShape(16.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = palette.normalAccent,
-                        contentColor = MaterialTheme.colorScheme.onSecondary
-                    ),
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(54.dp)
-                        .testTag("return_to_lobby_button")
-                ) {
-                    Text("Return to Lobby", style = MaterialTheme.typography.labelLarge)
                 }
             }
         }
+    }
+
+    val target = peekPlayer
+    if (target != null) {
+        val role = state.playerRoles[target.id] ?: PlayerRole.NORMAL
+        val word = state.referenceWordFor(target.id)
+        val identity = if (role == PlayerRole.IMPOSTOR) GameRoleIdentity.IMPOSTOR else GameRoleIdentity.AGENT
+        val style = identity.style(palette)
+        AlertDialog(
+            onDismissRequest = { peekPlayer = null },
+            title = { Text("${target.name}'s Reference") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        RoleEmblemBadge(identity = identity, size = 40.dp, animated = true)
+                        Text(
+                            text = if (role == PlayerRole.IMPOSTOR) "IMPOSTOR" else "CREWMATE",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = style.glow
+                        )
+                    }
+                    if (word != null) {
+                        Text(
+                            text = "Location Word: $word",
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = palette.normalGlow
+                        )
+                        Text(
+                            text = "Genre: ${state.locationWord?.genre ?: "Location"} • Hint: ${state.locationWord?.hint ?: ""}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    } else {
+                        Text(
+                            text = "You are the Impostor! Listen closely to Crewmates' clues to deduce the location.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = { peekPlayer = null }) {
+                    Text("Hide")
+                }
+            }
+        )
+    }
+
+    if (showReporterDialog) {
+        AlertDialog(
+            onDismissRequest = { showReporterDialog = false },
+            title = { Text("Initiate Emergency Meeting") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "Select who is calling the emergency report:",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    state.players.forEach { player ->
+                        OutlinedButton(
+                            onClick = {
+                                showReporterDialog = false
+                                onTriggerEmergencyMeeting(player.id, "Suspicious clue reported during discussion!")
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("report_player_${player.id}")
+                        ) {
+                            Text("Report as ${player.name}")
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showReporterDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 }

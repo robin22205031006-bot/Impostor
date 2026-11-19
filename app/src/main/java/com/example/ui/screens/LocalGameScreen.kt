@@ -83,13 +83,16 @@ import com.example.ui.components.EliminatedPlayerReveal
 import com.example.ui.components.EliminationRevealOverlay
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
+import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.NotificationsActive
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import com.example.ui.components.EmergencyMeetingOverlay
 import com.example.ui.components.GameRoleIdentity
 import com.example.ui.components.ImpostorAnimatedBackdrop
 import com.example.ui.components.OtherImpostorAllyNote
@@ -98,10 +101,12 @@ import com.example.ui.components.RoleEmblemBadge
 import com.example.ui.components.RoleEmblemChip
 import com.example.ui.components.RoleWordCard
 import com.example.ui.components.SaviorAbilityCard
+import com.example.ui.components.SettingsMenuSheet
 import com.example.ui.components.TurnExpiredBroadcast
 import com.example.ui.components.TurnTimerBar
 import com.example.ui.components.TurnTimerEventBus
 import com.example.ui.components.UltimateKillerAbilityCard
+import com.example.ui.components.VotingPlayerCard
 import com.example.ui.components.style
 import com.example.ui.theme.LocalImpostorPalette
 import com.example.data.GamePhase
@@ -119,9 +124,11 @@ fun LocalGameScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val lobbyState by gameViewModel.gameState.collectAsStateWithLifecycle()
     val soundEnabled by SoundCuePlayer.soundEnabled.collectAsStateWithLifecycle()
+    val emergencySoundEnabled by SoundCuePlayer.emergencyAlertSoundEnabled.collectAsStateWithLifecycle()
     val palette = LocalImpostorPalette.current
     var dismissedEliminationRound by rememberSaveable { mutableIntStateOf(0) }
     var showConfirmExitDialog by remember { mutableStateOf(false) }
+    var showSettingsSheet by remember { mutableStateOf(false) }
     var showRoleLobby by rememberSaveable { mutableStateOf(false) }
 
     val isRoundInProgress = state.phase == LocalPhase.REVEAL ||
@@ -255,9 +262,21 @@ fun LocalGameScreen(
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     IconButton(
+                        onClick = { showSettingsSheet = true },
+                        modifier = Modifier
+                            .size(48.dp)
+                            .testTag("settings_menu_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Settings,
+                            contentDescription = "Open settings menu",
+                            tint = palette.cyanAccent
+                        )
+                    }
+                    IconButton(
                         onClick = SoundCuePlayer::toggleSound,
                         modifier = Modifier
-                            .size(44.dp)
+                            .size(48.dp)
                             .testTag("local_sound_toggle_button")
                     ) {
                         Icon(
@@ -383,6 +402,7 @@ fun LocalGameScreen(
                                 onAddPlayer = viewModel::addPlayer,
                                 onRenamePlayer = viewModel::renamePlayer,
                                 onRemovePlayer = viewModel::removePlayer,
+                                onSetPlayerCount = viewModel::setPlayerCount,
                                 onSelectMode = viewModel::setGameMode,
                                 onSetImpostors = viewModel::setImpostorCount,
                                 onSetDuration = viewModel::setTurnDuration,
@@ -419,6 +439,11 @@ fun LocalGameScreen(
                         onSelectKillTarget = viewModel::setNullifiedVoter,
                         onSelectProtectedTarget = viewModel::setProtectedPlayer,
                         onSelectPrediction = viewModel::setAgentPrediction,
+                        onTriggerEmergencyMeeting = {
+                            viewModel.triggerEmergencyMeeting(
+                                reason = "Suspicious clue reported during discussion!"
+                            )
+                        },
                         onGoToVoting = viewModel::goToVoting
                     )
 
@@ -481,6 +506,41 @@ fun LocalGameScreen(
                     onDismiss = { dismissedEliminationRound = state.roundNumber }
                 )
             }
+        }
+
+        AnimatedVisibility(
+            visible = state.phase == LocalPhase.PLAYING && state.emergencyMeeting.isActive,
+            enter = fadeIn(animationSpec = tween(180)),
+            exit = fadeOut(animationSpec = tween(180))
+        ) {
+            EmergencyMeetingOverlay(
+                alert = state.emergencyMeeting,
+                onProceedNow = viewModel::dismissEmergencyMeetingAndVote
+            )
+        }
+
+        if (showSettingsSheet) {
+            val activeTimerDuration = if (state.phase == LocalPhase.SETUP && showRoleLobby) {
+                lobbyState.turnDurationSeconds
+            } else {
+                state.turnDurationSeconds
+            }
+            SettingsMenuSheet(
+                emergencyAlertSoundEnabled = emergencySoundEnabled,
+                soundEffectsEnabled = soundEnabled,
+                discussionDurationSeconds = activeTimerDuration,
+                onToggleEmergencyAlertSound = { enabled ->
+                    gameViewModel.setEmergencyAlertSoundEnabled(enabled)
+                },
+                onToggleSoundEffects = { enabled ->
+                    gameViewModel.setSoundEffectsEnabled(enabled)
+                },
+                onChangeDiscussionDuration = { seconds ->
+                    gameViewModel.setTurnDuration(seconds)
+                    viewModel.setTurnDuration(seconds)
+                },
+                onDismiss = { showSettingsSheet = false }
+            )
         }
 
         if (showConfirmExitDialog) {
@@ -571,6 +631,7 @@ private fun LocalPlayingContent(
     onSelectKillTarget: (String?) -> Unit,
     onSelectProtectedTarget: (String?) -> Unit,
     onSelectPrediction: (String, String?) -> Unit,
+    onTriggerEmergencyMeeting: () -> Unit,
     onGoToVoting: () -> Unit
 ) {
     val palette = LocalImpostorPalette.current
@@ -838,19 +899,41 @@ private fun LocalPlayingContent(
         }
 
         item {
-            Button(
-                onClick = onGoToVoting,
-                shape = RoundedCornerShape(16.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = palette.timerAccent,
-                    contentColor = MaterialTheme.colorScheme.onTertiary
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(54.dp)
-                    .testTag("local_go_to_voting_button")
-            ) {
-                Text("Proceed to Voting", style = MaterialTheme.typography.labelLarge)
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Button(
+                    onClick = onTriggerEmergencyMeeting,
+                    shape = RoundedCornerShape(16.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = palette.impostorAccent,
+                        contentColor = Color.White
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(52.dp)
+                        .testTag("local_emergency_meeting_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Campaign,
+                        contentDescription = null,
+                        modifier = Modifier.padding(end = 8.dp)
+                    )
+                    Text("Call Emergency Meeting / Report", style = MaterialTheme.typography.labelLarge)
+                }
+
+                Button(
+                    onClick = onGoToVoting,
+                    shape = RoundedCornerShape(16.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = palette.timerAccent,
+                        contentColor = MaterialTheme.colorScheme.onTertiary
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(54.dp)
+                        .testTag("local_go_to_voting_button")
+                ) {
+                    Text("Proceed to Voting", style = MaterialTheme.typography.labelLarge)
+                }
             }
         }
     }
@@ -1006,37 +1089,13 @@ private fun LocalVotingContent(
             } else {
                 items(candidates, key = { it.id }) { candidate ->
                     val selected = selectedSuspectId == candidate.id
-                    Surface(
+                    VotingPlayerCard(
+                        player = candidate,
+                        isSelected = selected,
+                        voteCount = 0,
                         onClick = { onCastVote(voter.id, candidate.id) },
-                        color = if (selected) palette.impostorSurface else MaterialTheme.colorScheme.surfaceContainer,
-                        shape = RoundedCornerShape(16.dp),
-                        border = BorderStroke(
-                            width = if (selected) 2.dp else 1.dp,
-                            color = if (selected) palette.impostorGlow else MaterialTheme.colorScheme.outlineVariant
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("local_vote_player_${candidate.id}")
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(16.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(
-                                text = candidate.name,
-                                style = MaterialTheme.typography.titleMedium,
-                                color = if (selected) palette.impostorGlow else MaterialTheme.colorScheme.onSurface
-                            )
-                            if (selected) {
-                                Icon(
-                                    imageVector = Icons.Filled.Check,
-                                    contentDescription = "Selected suspect",
-                                    tint = palette.impostorGlow
-                                )
-                            }
-                        }
-                    }
+                        modifier = Modifier.testTag("local_vote_player_${candidate.id}")
+                    )
                 }
 
                 item {
@@ -1190,8 +1249,16 @@ private fun LocalResultsContent(
                     )
                     Spacer(modifier = Modifier.height(10.dp))
                     Text(
-                        text = if (state.crewWon) "AGENTS WIN!" else "IMPOSTORS WIN!",
+                        text = if (state.crewWon) "VICTORY" else "DEFEAT",
                         style = MaterialTheme.typography.displayMedium,
+                        color = winnerStyle.glow,
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = if (state.crewWon) "CREWMATES WIN!" else "IMPOSTORS WIN!",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
                         color = winnerStyle.glow,
                         textAlign = TextAlign.Center
                     )
@@ -1199,8 +1266,8 @@ private fun LocalResultsContent(
                     Text(
                         text = when {
                             state.impostorGuessCorrect -> "An impostor correctly deduced the secret word!"
-                            state.crewWon -> "The agents exposed the impostor!"
-                            else -> "The impostor survived the vote undetected!"
+                            state.crewWon -> "The impostor was successfully voted out!"
+                            else -> "The impostors achieved their goal!"
                         },
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurface,

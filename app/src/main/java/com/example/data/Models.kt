@@ -1,14 +1,21 @@
 package com.example.data
 
-enum class PlayerRole {
-    NORMAL,
-    IMPOSTOR
+enum class PlayerRole(val displayName: String) {
+    NORMAL("Crewmate"),
+    IMPOSTOR("Impostor")
 }
 
 enum class GamePhase(val title: String) {
     LOBBY("Lobby"),
     DISCUSSION("Discussion"),
-    VOTING("Voting")
+    VOTING("Voting"),
+    RESULTS("Results")
+}
+
+enum class RoundOutcome(val headline: String) {
+    PENDING("Pending"),
+    VICTORY("Victory"),
+    DEFEAT("Defeat")
 }
 
 enum class TurnStatus(val label: String) {
@@ -24,6 +31,13 @@ data class LocalPlayer(
     val score: Int = 0
 )
 
+data class EmergencyMeetingAlert(
+    val isActive: Boolean = false,
+    val reporterName: String = "",
+    val reason: String = "Emergency Meeting Initiated",
+    val countdownSeconds: Int = 2
+)
+
 data class GameState(
     val phase: GamePhase = GamePhase.LOBBY,
     val players: List<LocalPlayer> = listOf(
@@ -35,12 +49,20 @@ data class GameState(
     val impostorCount: Int = 1,
     val playerRoles: Map<String, PlayerRole> = emptyMap(),
     val revealedRolePlayerIds: Set<String> = emptySet(),
+    val locationWord: WordEntry? = null,
     val turnOrderIds: List<String> = emptyList(),
     val currentTurnIndex: Int = 0,
     val turnStatus: TurnStatus = TurnStatus.IDLE,
     val currentTimerCount: Int = 45,
     val turnDurationSeconds: Int = 45,
-    val votesByPlayerId: Map<String, String> = emptyMap()
+    val votesByPlayerId: Map<String, String> = emptyMap(),
+    val totalVotesPerPlayer: Map<String, Int> = emptyMap(),
+    val votedOutPlayerIds: List<String> = emptyList(),
+    val roundOutcome: RoundOutcome = RoundOutcome.PENDING,
+    val outcomeReason: String = "",
+    val emergencyAlertSoundEnabled: Boolean = true,
+    val soundEffectsEnabled: Boolean = true,
+    val emergencyMeeting: EmergencyMeetingAlert = EmergencyMeetingAlert()
 ) {
     val activeTurnPlayer: LocalPlayer?
         get() {
@@ -50,4 +72,9 @@ data class GameState(
 
     val impostorIds: Set<String>
         get() = playerRoles.filterValues { it == PlayerRole.IMPOSTOR }.keys
+
+    fun referenceWordFor(playerId: String): String? {
+        val role = playerRoles[playerId] ?: PlayerRole.NORMAL
+        return if (role == PlayerRole.IMPOSTOR) null else locationWord?.word
+    }
 }

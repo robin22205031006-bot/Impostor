@@ -20,12 +20,23 @@ object SoundCuePlayer {
     private val _soundEnabled = MutableStateFlow(true)
     val soundEnabled: StateFlow<Boolean> = _soundEnabled.asStateFlow()
 
+    private val _emergencyAlertSoundEnabled = MutableStateFlow(true)
+    val emergencyAlertSoundEnabled: StateFlow<Boolean> = _emergencyAlertSoundEnabled.asStateFlow()
+
     fun toggleSound() {
         _soundEnabled.value = !_soundEnabled.value
     }
 
     fun setSoundEnabled(enabled: Boolean) {
         _soundEnabled.value = enabled
+    }
+
+    fun toggleEmergencyAlertSound() {
+        _emergencyAlertSoundEnabled.value = !_emergencyAlertSoundEnabled.value
+    }
+
+    fun setEmergencyAlertSoundEnabled(enabled: Boolean) {
+        _emergencyAlertSoundEnabled.value = enabled
     }
 
     fun playRoleRevealCue(isImpostor: Boolean) {
@@ -53,6 +64,19 @@ object SoundCuePlayer {
                 ToneSegment(freqHz = 783.99, durationMs = 95, gain = 0.18),
                 ToneSegment(freqHz = 0.0, durationMs = 65, gain = 0.0),
                 ToneSegment(freqHz = 659.25, durationMs = 150, gain = 0.20)
+            )
+        )
+    }
+
+    fun playEmergencyMeetingCue() {
+        if (!_soundEnabled.value || !_emergencyAlertSoundEnabled.value) return
+        playSequence(
+            listOf(
+                ToneSegment(freqHz = 880.0, durationMs = 110, gain = 0.22),
+                ToneSegment(freqHz = 0.0, durationMs = 45, gain = 0.0),
+                ToneSegment(freqHz = 622.25, durationMs = 130, gain = 0.24),
+                ToneSegment(freqHz = 0.0, durationMs = 45, gain = 0.0),
+                ToneSegment(freqHz = 880.0, durationMs = 180, gain = 0.24)
             )
         )
     }

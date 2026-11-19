@@ -293,7 +293,7 @@ fun RoleWordCard(
                         text = when (roleIdentity) {
                             GameRoleIdentity.SAVIOR_AGENT -> "SAVIOR AGENT • SECRET WORD"
                             GameRoleIdentity.AGENT_DIRECTOR -> "AGENT DIRECTOR • SECRET WORD"
-                            else -> "SECRET WORD"
+                            else -> "CREWMATE • SECRET WORD"
                         },
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold,

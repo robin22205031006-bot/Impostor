@@ -70,11 +70,13 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.GameMode
 import com.example.data.LocalPlayer
 import com.example.data.WordBank
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.input.KeyboardType
 import com.example.ui.components.GameRoleIdentity
 import com.example.ui.components.GlassSectionCard
 import com.example.ui.components.RoleEmblemBadge
@@ -90,6 +92,7 @@ fun GameSetupScreen(
     onAddPlayer: (String) -> Unit,
     onRenamePlayer: (String, String) -> Unit,
     onRemovePlayer: (String) -> Unit,
+    onSetPlayerCount: (Int) -> Unit = {},
     onSelectMode: (GameMode) -> Unit,
     onSetImpostors: (Int) -> Unit,
     onSetDuration: (Int) -> Unit,
@@ -108,6 +111,7 @@ fun GameSetupScreen(
     val customWords by WordBank.customWordsFlow.collectAsStateWithLifecycle()
     val customCategoryName by WordBank.customCategoryNameFlow.collectAsStateWithLifecycle()
     var newPlayerDraft by remember { mutableStateOf("") }
+    var playerCountDraft by remember(state.players.size) { mutableStateOf(state.players.size.toString()) }
     var editingPlayer by remember { mutableStateOf<LocalPlayer?>(null) }
     var renameDraft by remember { mutableStateOf("") }
 
@@ -411,38 +415,84 @@ fun GameSetupScreen(
             )
         }
 
-        // 5. Unlimited Players with Rename & Remove
+        // 5. Unlimited Players with Player Count Input, Rename & Remove
         item {
             GlassSectionCard(
                 title = "PLAYERS (${state.players.size})",
                 icon = Icons.Filled.Group,
                 accentColor = palette.cyanAccent
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    OutlinedTextField(
-                        value = newPlayerDraft,
-                        onValueChange = { newPlayerDraft = it.take(24) },
-                        label = { Text("Add Player Name") },
-                        singleLine = true,
-                        modifier = Modifier
-                            .weight(1f)
-                            .testTag("add_player_input")
-                    )
-                    Button(
-                        onClick = {
-                            onAddPlayer(newPlayerDraft)
-                            newPlayerDraft = ""
-                        },
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier
-                            .height(54.dp)
-                            .testTag("add_player_button")
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Filled.Add, contentDescription = "Add player")
+                        OutlinedTextField(
+                            value = playerCountDraft,
+                            onValueChange = { raw ->
+                                val digits = raw.filter { it.isDigit() }.take(2)
+                                playerCountDraft = digits
+                                digits.toIntOrNull()?.let { parsed ->
+                                    if (parsed in 2..16) {
+                                        onSetPlayerCount(parsed)
+                                    }
+                                }
+                            },
+                            label = { Text("Number of Players (2–16)") },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("setup_player_count_input")
+                        )
+                        OutlinedButton(
+                            onClick = { onSetPlayerCount(state.players.size - 1) },
+                            enabled = state.players.size > 2,
+                            modifier = Modifier
+                                .size(48.dp)
+                                .testTag("setup_decrease_players_button"),
+                            contentPadding = PaddingValues(0.dp)
+                        ) {
+                            Text("-", style = MaterialTheme.typography.titleLarge)
+                        }
+                        OutlinedButton(
+                            onClick = { onSetPlayerCount(state.players.size + 1) },
+                            enabled = state.players.size < 16,
+                            modifier = Modifier
+                                .size(48.dp)
+                                .testTag("setup_increase_players_button"),
+                            contentPadding = PaddingValues(0.dp)
+                        ) {
+                            Text("+", style = MaterialTheme.typography.titleLarge)
+                        }
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedTextField(
+                            value = newPlayerDraft,
+                            onValueChange = { newPlayerDraft = it.take(24) },
+                            label = { Text("Add Player Name") },
+                            singleLine = true,
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("add_player_input")
+                        )
+                        Button(
+                            onClick = {
+                                onAddPlayer(newPlayerDraft)
+                                newPlayerDraft = ""
+                            },
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier
+                                .height(54.dp)
+                                .testTag("add_player_button")
+                        ) {
+                            Icon(Icons.Filled.Add, contentDescription = "Add player")
+                        }
                     }
                 }
             }
