@@ -14,6 +14,7 @@ import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential.Companion.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
 import com.google.firebase.Firebase
+import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.GoogleAuthProvider
@@ -28,6 +29,15 @@ import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 
 private const val AUTH_TAG = "Auth"
+
+fun isFirebaseConfigured(context: Context): Boolean =
+    FirebaseApp.getApps(context).isNotEmpty()
+
+private fun resolveWebClientId(context: Context): String? = try {
+    context.getString(R.string.default_web_client_id).takeIf { it.isNotBlank() }
+} catch (_: Exception) {
+    null
+}
 
 fun FirebaseAuth.authStateFlow(): Flow<FirebaseUser?> = callbackFlow {
     val listener = FirebaseAuth.AuthStateListener { auth ->
@@ -44,13 +54,15 @@ fun attemptAutoSignIn(
     onAuthSuccess: () -> Unit,
     onUnauthenticated: () -> Unit
 ) {
+    if (!isFirebaseConfigured(context)) {
+        onUnauthenticated()
+        return
+    }
     if (Firebase.auth.currentUser != null) {
         onAuthSuccess()
         return
     }
-    val clientId = try {
-        context.getString(R.string.default_web_client_id)
-    } catch (_: Exception) {
+    val clientId = resolveWebClientId(context) ?: run {
         onUnauthenticated()
         return
     }
@@ -89,10 +101,12 @@ fun onGoogleSignInClicked(
     onAuthError: (String) -> Unit,
     onAuthCancelled: () -> Unit = {}
 ) {
-    val clientId = try {
-        context.getString(R.string.default_web_client_id)
-    } catch (_: Exception) {
-        onAuthError("Google Sign-In configuration missing: default_web_client_id not found")
+    if (!isFirebaseConfigured(context)) {
+        onAuthError("Online multiplayer requires Firebase configuration (google-services.json). Pass & Play works offline.")
+        return
+    }
+    val clientId = resolveWebClientId(context) ?: run {
+        onAuthError("Google Sign-In is unavailable in this offline build (missing google-services.json).")
         return
     }
     val activity = context as? Activity
@@ -139,7 +153,10 @@ fun signOutUser(
             } catch (e: Exception) {
                 Log.w(AUTH_TAG, "Failed to clear credential state: ${e.message}")
             } finally {
-                Firebase.auth.signOut()
+                try {
+                    Firebase.auth.signOut()
+                } catch (_: IllegalStateException) {
+                }
                 onSignOutComplete()
             }
         }

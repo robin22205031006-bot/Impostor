@@ -12,6 +12,8 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -25,6 +27,7 @@ import androidx.navigation.navArgument
 import com.example.data.GameRepository
 import com.example.data.WordBank
 import com.example.data.authStateFlow
+import com.example.data.isFirebaseConfigured
 import com.example.ui.screens.AuthScreen
 import com.example.ui.screens.HubScreen
 import com.example.ui.screens.LocalGameScreen
@@ -36,6 +39,7 @@ import com.example.viewmodel.MultiplayerViewModel
 import com.google.firebase.Firebase
 import com.google.firebase.auth.auth
 import com.google.firebase.firestore.FirebaseFirestore
+import kotlinx.coroutines.flow.flowOf
 
 private const val ROUTE_LOCAL = "local"
 private const val ROUTE_ONLINE = "online"
@@ -56,8 +60,17 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun AppNavigation() {
-    val auth = Firebase.auth
-    val currentUser by auth.authStateFlow().collectAsStateWithLifecycle(initialValue = auth.currentUser)
+    val context = LocalContext.current
+    val firebaseReady = remember(context) { isFirebaseConfigured(context) }
+    val currentUser by remember(firebaseReady) {
+        if (firebaseReady) {
+            Firebase.auth.authStateFlow()
+        } else {
+            flowOf(null)
+        }
+    }.collectAsStateWithLifecycle(
+        initialValue = if (firebaseReady) Firebase.auth.currentUser else null
+    )
     val navController = rememberNavController()
 
     NavHost(

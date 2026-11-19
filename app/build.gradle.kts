@@ -20,6 +20,9 @@ android {
     versionName = "1.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    if (!file("google-services.json").exists()) {
+      resValue("string", "default_web_client_id", "")
+    }
   }
 
   // Do not remove or modify these signingConfigs. They are necessary for building, installing,
@@ -137,4 +140,40 @@ dependencies {
   debugImplementation(libs.androidx.compose.ui.tooling)
   // "ksp"(libs.androidx.room.compiler)
   // "ksp"(libs.moshi.kotlin.codegen)
+}
+
+abstract class EnsureDebugKeystoreTask : org.gradle.api.DefaultTask() {
+  @get:org.gradle.api.tasks.Internal
+  abstract val keystoreFile: org.gradle.api.file.RegularFileProperty
+
+  @org.gradle.api.tasks.TaskAction
+  fun ensure() {
+    val file = keystoreFile.get().asFile
+    if (!file.exists()) {
+      ProcessBuilder(
+          "keytool",
+          "-genkeypair",
+          "-v",
+          "-keystore", file.absolutePath,
+          "-storepass", "android",
+          "-alias", "androiddebugkey",
+          "-keypass", "android",
+          "-keyalg", "RSA",
+          "-keysize", "2048",
+          "-validity", "10000",
+          "-dname", "CN=Android Debug,O=Android,C=US"
+      ).inheritIO().start().waitFor()
+    }
+  }
+}
+
+val ensureDebugKeystore =
+    tasks.register<EnsureDebugKeystoreTask>("ensureDebugKeystore") {
+      val target = rootProject.layout.projectDirectory.file("debug.keystore")
+      keystoreFile.set(target)
+      outputs.upToDateWhen { target.asFile.exists() }
+    }
+
+tasks.matching { it.name == "validateSigningDebug" }.configureEach {
+  dependsOn(ensureDebugKeystore)
 }
