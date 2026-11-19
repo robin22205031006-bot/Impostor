@@ -45,6 +45,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.example.R
+import com.example.data.AvatarCatalog
+import com.example.data.AvatarPose
 import com.example.data.PlayerRole
 import com.example.ui.theme.LocalImpostorPalette
 
@@ -62,6 +64,8 @@ fun RoleWordCard(
     } else {
         GameRoleIdentity.AGENT
     },
+    avatarId: String? = null,
+    avatarPose: AvatarPose = AvatarPose.ORIGINAL,
     modifier: Modifier = Modifier
 ) {
     val palette = LocalImpostorPalette.current
@@ -251,12 +255,33 @@ fun RoleWordCard(
                 HorizontalDivider(color = accent.copy(alpha = 0.28f))
                 Spacer(modifier = Modifier.height(18.dp))
 
-                // Prominent Animated Role Emblem Medallion
-                RoleEmblemBadge(
-                    identity = roleIdentity,
-                    size = 64.dp,
-                    animated = true
-                )
+                // Prominent Animated Role Emblem Medallion + Player Character Avatar
+                if (avatarId != null) {
+                    val avatarChar = AvatarCatalog.findById(avatarId)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        CharacterAvatarThumbnail(
+                            character = avatarChar,
+                            pose = avatarPose,
+                            size = 62.dp,
+                            borderColor = glow,
+                            isHighlighted = true
+                        )
+                        RoleEmblemBadge(
+                            identity = roleIdentity,
+                            size = 62.dp,
+                            animated = true
+                        )
+                    }
+                } else {
+                    RoleEmblemBadge(
+                        identity = roleIdentity,
+                        size = 64.dp,
+                        animated = true
+                    )
+                }
 
                 Spacer(modifier = Modifier.height(14.dp))
 

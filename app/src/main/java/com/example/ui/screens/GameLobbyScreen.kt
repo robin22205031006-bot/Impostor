@@ -96,6 +96,10 @@ import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material3.AlertDialog
 import androidx.compose.ui.platform.LocalContext
+import com.example.data.AvatarCatalog
+import com.example.data.AvatarPose
+import com.example.ui.components.AvatarPickerSheet
+import com.example.ui.components.CharacterAvatarThumbnail
 import com.example.ui.components.CircularCountdownTimer
 import com.example.ui.components.EmergencyMeetingOverlay
 import com.example.ui.components.GameRoleIdentity
@@ -131,6 +135,7 @@ fun GameLobbyScreen(
         onHideAll = viewModel::hideAllRoles,
         onAddPlayer = viewModel::addPlayer,
         onRemovePlayer = viewModel::removePlayer,
+        onSetPlayerAvatar = viewModel::setPlayerAvatar,
         onStartDiscussion = viewModel::startDiscussion,
         onToggleTimerPause = viewModel::toggleTimerPause,
         onNextTurn = viewModel::nextTurn,
@@ -157,6 +162,7 @@ fun GameLobbyContent(
     onHideAll: () -> Unit,
     onAddPlayer: (String) -> Unit,
     onRemovePlayer: (String) -> Unit,
+    onSetPlayerAvatar: (String, String, AvatarPose?) -> Unit = { _, _, _ -> },
     onStartDiscussion: () -> Unit,
     onToggleTimerPause: () -> Unit,
     onNextTurn: () -> Unit,
@@ -251,6 +257,7 @@ fun GameLobbyContent(
                     onHideAll = onHideAll,
                     onAddPlayer = onAddPlayer,
                     onRemovePlayer = onRemovePlayer,
+                    onSetPlayerAvatar = onSetPlayerAvatar,
                     onStartDiscussion = onStartDiscussion
                 )
 
@@ -304,6 +311,7 @@ private fun LobbyPhaseView(
     onHideAll: () -> Unit,
     onAddPlayer: (String) -> Unit,
     onRemovePlayer: (String) -> Unit,
+    onSetPlayerAvatar: (String, String, AvatarPose?) -> Unit = { _, _, _ -> },
     onStartDiscussion: () -> Unit
 ) {
     val palette = LocalImpostorPalette.current
@@ -311,6 +319,7 @@ private fun LobbyPhaseView(
     val allRevealed = state.players.isNotEmpty() && state.revealedRolePlayerIds.size >= state.players.size
     var newPlayerName by remember { mutableStateOf("") }
     var showLocationPreview by remember { mutableStateOf(false) }
+    var avatarPickerPlayerId by remember { mutableStateOf<String?>(null) }
 
     Column(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
@@ -472,6 +481,7 @@ private fun LobbyPhaseView(
                     isRevealed = isRevealed,
                     canRemove = state.players.size > 2,
                     onToggleReveal = { onToggleRoleReveal(player.id) },
+                    onPickAvatar = { avatarPickerPlayerId = player.id },
                     onRemove = { onRemovePlayer(player.id) }
                 )
             }
@@ -581,6 +591,17 @@ private fun LobbyPhaseView(
             }
         }
     }
+
+    if (avatarPickerPlayerId != null) {
+        AvatarPickerSheet(
+            players = state.players,
+            initialPlayerId = avatarPickerPlayerId,
+            onSelectAvatarForPlayer = { pid, avatarId, pose ->
+                onSetPlayerAvatar(pid, avatarId, pose)
+            },
+            onDismiss = { avatarPickerPlayerId = null }
+        )
+    }
 }
 
 @Composable
@@ -591,6 +612,7 @@ private fun GlowingLobbyRoleCard(
     isRevealed: Boolean,
     canRemove: Boolean,
     onToggleReveal: () -> Unit,
+    onPickAvatar: () -> Unit = {},
     onRemove: () -> Unit
 ) {
     val palette = LocalImpostorPalette.current
@@ -640,27 +662,26 @@ private fun GlowingLobbyRoleCard(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            if (isRevealed) {
-                RoleEmblemBadge(
-                    identity = identity,
-                    size = 42.dp,
-                    animated = true
+            val avatarChar = AvatarCatalog.findById(player.avatarId)
+            Box(
+                modifier = Modifier
+                    .clickable(onClick = onPickAvatar)
+                    .testTag("lobby_avatar_${player.id}")
+            ) {
+                CharacterAvatarThumbnail(
+                    character = avatarChar,
+                    pose = player.avatarPose,
+                    size = 46.dp,
+                    borderColor = if (isRevealed) style.glow else avatarChar.glowColor,
+                    isHighlighted = isRevealed
                 )
-            } else {
-                Surface(
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    shape = CircleShape,
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                    modifier = Modifier.size(42.dp)
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            imageVector = Icons.Filled.Visibility,
-                            contentDescription = "Tap to reveal ${player.name}'s role",
-                            tint = palette.cyanAccent,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
+                if (isRevealed) {
+                    RoleEmblemBadge(
+                        identity = identity,
+                        size = 20.dp,
+                        animated = true,
+                        modifier = Modifier.align(Alignment.BottomEnd)
+                    )
                 }
             }
 

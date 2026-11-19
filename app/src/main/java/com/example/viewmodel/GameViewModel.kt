@@ -3,6 +3,8 @@ package com.example.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.audio.SoundCuePlayer
+import com.example.data.AvatarCatalog
+import com.example.data.AvatarPose
 import com.example.data.CryptoRandom
 import com.example.data.EmergencyMeetingAlert
 import com.example.data.GamePhase
@@ -51,10 +53,15 @@ class GameViewModel(
             } else if (clampedCount < curr.players.size) {
                 curr.players.take(clampedCount)
             } else {
+                val used = curr.players.map { it.avatarId }.toMutableSet()
                 val extras = (curr.players.size + 1..clampedCount).map { idx ->
+                    val nextAvatar = AvatarCatalog.nextAvailableAvatar(used, idx - 1)
+                    used.add(nextAvatar.id)
                     LocalPlayer(
                         id = UUID.randomUUID().toString().take(8),
-                        name = "Player $idx"
+                        name = "Player $idx",
+                        avatarId = nextAvatar.id,
+                        avatarPose = AvatarPose.ORIGINAL
                     )
                 }
                 curr.players + extras
@@ -128,9 +135,13 @@ class GameViewModel(
         val trimmed = rawName.trim().take(24)
         _gameState.update { curr ->
             val finalName = trimmed.ifEmpty { "Player ${curr.players.size + 1}" }
+            val used = curr.players.map { it.avatarId }.toSet()
+            val nextAvatar = AvatarCatalog.nextAvailableAvatar(used, curr.players.size)
             val newPlayer = LocalPlayer(
                 id = UUID.randomUUID().toString().take(8),
-                name = finalName
+                name = finalName,
+                avatarId = nextAvatar.id,
+                avatarPose = AvatarPose.ORIGINAL
             )
             val updatedPlayers = curr.players + newPlayer
             val maxImpostors = (updatedPlayers.size - 1).coerceAtLeast(1)
@@ -140,6 +151,38 @@ class GameViewModel(
                 impostorCount = clampedImp,
                 playerRoles = buildRoleAssignments(updatedPlayers, clampedImp),
                 totalVotesPerPlayer = computeTotalVotesPerPlayer(updatedPlayers, emptyMap())
+            )
+        }
+    }
+
+    fun setPlayerAvatar(playerId: String, avatarId: String, pose: AvatarPose? = null) {
+        val validId = AvatarCatalog.findById(avatarId).id
+        _gameState.update { curr ->
+            curr.copy(
+                players = curr.players.map { player ->
+                    if (player.id == playerId) {
+                        player.copy(
+                            avatarId = validId,
+                            avatarPose = pose ?: player.avatarPose
+                        )
+                    } else {
+                        player
+                    }
+                }
+            )
+        }
+    }
+
+    fun cyclePlayerPose(playerId: String) {
+        _gameState.update { curr ->
+            curr.copy(
+                players = curr.players.map { player ->
+                    if (player.id == playerId) {
+                        player.copy(avatarPose = player.avatarPose.next())
+                    } else {
+                        player
+                    }
+                }
             )
         }
     }

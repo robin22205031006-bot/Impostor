@@ -46,6 +46,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.example.data.AvatarCatalog
 import com.example.data.GameState
 import com.example.data.PlayerRole
 import com.example.data.RoundOutcome
@@ -230,9 +231,17 @@ fun RoundOutcomeScreen(
                                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                                         modifier = Modifier.weight(1f)
                                     ) {
+                                        val avatarChar = AvatarCatalog.findById(player.avatarId)
+                                        CharacterAvatarThumbnail(
+                                            character = avatarChar,
+                                            pose = player.avatarPose,
+                                            size = 36.dp,
+                                            borderColor = if (wasVotedOut) roleStyle.glow else avatarChar.glowColor,
+                                            isHighlighted = wasVotedOut
+                                        )
                                         RoleEmblemBadge(
                                             identity = roleIdentity,
-                                            size = 28.dp,
+                                            size = 24.dp,
                                             animated = false
                                         )
                                         Column {

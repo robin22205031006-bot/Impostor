@@ -5,6 +5,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.test.core.app.ApplicationProvider
@@ -34,6 +35,9 @@ class ExampleRobolectricTest {
     @Test
     fun `main activity launches and navigates between pass and play and role lobby`() {
         composeRule.onNodeWithTag("game_setup_screen").assertIsDisplayed()
+        composeRule.onNodeWithTag("welcome_start_button").performClick()
+        composeRule.waitForIdle()
+
         composeRule.onNodeWithTag("tab_role_lobby").performClick()
         composeRule.onNodeWithTag("game_lobby_screen").assertIsDisplayed()
 
@@ -53,6 +57,8 @@ class ExampleRobolectricTest {
 
     @Test
     fun `emergency meeting overlay transitions to voting screen and victory or defeat outcome screen`() {
+        composeRule.onNodeWithTag("welcome_start_button").performClick()
+        composeRule.waitForIdle()
         composeRule.onNodeWithTag("tab_role_lobby").performClick()
         composeRule.waitForIdle()
 
@@ -96,5 +102,45 @@ class ExampleRobolectricTest {
             SoundCuePlayer.setEmergencyAlertSoundEnabled(true)
             SoundCuePlayer.setSoundEnabled(true)
         }
+    }
+
+    @Test
+    fun `full pass and play wizard completes 3d role flip discussion voting and results`() {
+        composeRule.onNodeWithTag("welcome_start_button").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("mode_one_phone_button").performClick()
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag("players_next_button").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("rules_next_button").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("local_start_round_button").performClick()
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag("role_reveal_screen").assertIsDisplayed()
+        repeat(4) {
+            composeRule.onNodeWithTag("local_tap_to_reveal_card").performClick()
+            composeRule.waitForIdle()
+            composeRule.onNodeWithTag("local_hide_and_pass_button").assertIsDisplayed().performClick()
+            composeRule.waitForIdle()
+        }
+
+        composeRule.onNodeWithTag("local_go_to_voting_button").assertIsDisplayed().performClick()
+        composeRule.waitForIdle()
+
+        val voteTargets = listOf("p2", "p1", "p1", "p1")
+        voteTargets.forEach { targetId ->
+            composeRule.onNodeWithTag("local_open_ballot_card").performClick()
+            composeRule.waitForIdle()
+            composeRule.onNodeWithTag("local_vote_player_$targetId").performScrollTo().performClick()
+            composeRule.waitForIdle()
+            composeRule.onNodeWithTag("local_lock_vote_button").performClick()
+            composeRule.waitForIdle()
+        }
+
+        composeRule.onNodeWithTag("local_reveal_results_button").assertIsDisplayed().performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("THE BIG REVEAL").assertIsDisplayed()
     }
 }

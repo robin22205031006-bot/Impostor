@@ -1,7 +1,5 @@
 package com.example.ui.screens
 
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
@@ -13,13 +11,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -30,6 +22,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -40,11 +33,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.FlipCameraAndroid
+import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.TouchApp
-import androidx.compose.material.icons.filled.VisibilityOff
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -61,20 +53,24 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.example.audio.SoundCuePlayer
+import com.example.data.AvatarCatalog
+import com.example.data.AvatarPose
 import com.example.data.PlayerRole
 import com.example.ui.components.AgentDirectorBadge
 import com.example.ui.components.AgentPredictionCard
+import com.example.ui.components.FloatingHeroSprite
 import com.example.ui.components.GameRoleIdentity
+import com.example.ui.components.GoldCtaButton
 import com.example.ui.components.OtherImpostorAllyNote
-import com.example.ui.components.RoleWordCard
+import com.example.ui.components.RoleEmblemChip
 import com.example.ui.components.SaviorAbilityCard
-import com.example.ui.components.TurnTimerBar
 import com.example.ui.components.UltimateKillerAbilityCard
 import com.example.ui.components.style
 import com.example.ui.theme.LocalImpostorPalette
@@ -110,10 +106,14 @@ fun RoleRevealScreen(
     onSelectPrediction: (String?) -> Unit = {},
     onReveal: () -> Unit,
     onHideAndNext: () -> Unit,
+    avatarId: String? = null,
+    avatarPose: AvatarPose = AvatarPose.ORIGINAL,
     modifier: Modifier = Modifier
 ) {
     val palette = LocalImpostorPalette.current
+    val density = LocalDensity.current.density
     val isLastPlayer = playerIndex >= totalPlayers - 1
+    val isImpostor = role == PlayerRole.IMPOSTOR
     val roleIdentity = GameRoleIdentity.resolve(
         role = role,
         isUltimateKiller = impostorAbilityEnabled && isUltimateKiller,
@@ -121,69 +121,78 @@ fun RoleRevealScreen(
         isDirector = agentDirectorEnabled && isDirector
     )
     val roleStyle = roleIdentity.style(palette)
-    val buttonAccent by animateColorAsState(
-        targetValue = if (isRevealed) roleStyle.accent else palette.cyanAccent,
-        animationSpec = tween(360),
-        label = "reveal_cta_accent"
+
+    val flipRotation by animateFloatAsState(
+        targetValue = if (isRevealed) 180f else 0f,
+        animationSpec = spring(
+            dampingRatio = 0.78f,
+            stiffness = Spring.StiffnessLow
+        ),
+        label = "card_flip_rotation"
+    )
+
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val pressScale by animateFloatAsState(
+        targetValue = if (isPressed && !isRevealed) 0.965f else 1f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMedium
+        ),
+        label = "card_press_scale"
     )
 
     LaunchedEffect(isRevealed, role) {
         if (isRevealed) {
-            SoundCuePlayer.playRoleRevealCue(isImpostor = role == PlayerRole.IMPOSTOR)
+            SoundCuePlayer.playRoleRevealCue(isImpostor = isImpostor)
         }
     }
 
     Column(
         modifier = modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(20.dp)
+            .padding(horizontal = 20.dp, vertical = 12.dp)
             .testTag("role_reveal_screen"),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.SpaceBetween
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Column(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .weight(1f)
+                .verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            if (timerEnabled) {
-                TurnTimerBar(
-                    activePlayerName = "Pass to $playerName",
-                    turnIndex = playerIndex,
-                    totalTurns = totalPlayers,
-                    remainingSeconds = turnDurationSeconds,
-                    totalSeconds = turnDurationSeconds,
-                    isPaused = true,
-                    showControls = false
+            // Top Pass Progress Header
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceContainer,
+                shape = RoundedCornerShape(50),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+            ) {
+                Text(
+                    text = "${playerIndex + 1} / $totalPlayers PLAYERS • PASS THE PHONE",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = palette.goldAccent,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 7.dp)
                 )
-            } else {
-                Surface(
-                    color = MaterialTheme.colorScheme.surfaceContainer,
-                    shape = RoundedCornerShape(18.dp),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "Pass to $playerName",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Text(
-                            text = "${playerIndex + 1} / $totalPlayers",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = palette.cyanAccent
-                        )
-                    }
-                }
             }
 
-            // Progress indicator pills for pass-and-play order
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = "For your eyes only",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = playerName,
+                    style = MaterialTheme.typography.displayMedium,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = palette.goldAccent,
+                    textAlign = TextAlign.Center
+                )
+            }
+
+            // Progress dots
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.Center,
@@ -204,148 +213,137 @@ fun RoleRevealScreen(
                             .clip(CircleShape)
                             .background(
                                 when {
-                                    isCurrent -> if (isRevealed) roleStyle.glow else palette.cyanAccent
-                                    isDone -> palette.normalAccent.copy(alpha = 0.7f)
-                                    else -> MaterialTheme.colorScheme.outlineVariant
+                                    isCurrent -> if (isRevealed) roleStyle.glow else palette.goldAccent
+                                    isDone -> palette.goldAccent.copy(alpha = 0.45f)
+                                    else -> MaterialTheme.colorScheme.outline
                                 }
                             )
                     )
                 }
             }
 
-            // Tap-to-reveal overlay card strictly hides the assigned word & role until tapped
-            AnimatedContent(
-                targetState = isRevealed,
-                transitionSpec = {
-                    (fadeIn(animationSpec = tween(260)) +
-                        scaleIn(
-                            initialScale = 0.90f,
-                            animationSpec = spring(
-                                dampingRatio = Spring.DampingRatioLowBouncy,
-                                stiffness = Spring.StiffnessMediumLow
-                            )
-                        ))
-                        .togetherWith(
-                            fadeOut(animationSpec = tween(160)) +
-                                scaleOut(targetScale = 0.94f, animationSpec = tween(160))
-                        )
-                        .using(SizeTransform(clip = false))
-                },
-                label = "role_reveal_overlay_transition"
-            ) { revealed ->
-                if (!revealed) {
-                    TapToRevealOverlayCard(
+            // True 3D Flippable Card Container
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .graphicsLayer {
+                        rotationY = flipRotation
+                        cameraDistance = 14f * density
+                        scaleX = pressScale
+                        scaleY = pressScale
+                    }
+            ) {
+                if (flipRotation <= 90f) {
+                    CardFrontFace(
                         playerName = playerName,
+                        playerIndex = playerIndex,
+                        avatarId = avatarId,
+                        avatarPose = avatarPose,
+                        interactionSource = interactionSource,
                         onReveal = onReveal
                     )
                 } else {
-                    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                        RoleWordCard(
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .graphicsLayer { rotationY = 180f }
+                    ) {
+                        CardBackFace(
                             role = role,
+                            roleIdentity = roleIdentity,
                             category = category,
                             genre = genre,
                             secretWord = secretWord,
                             hint = hint,
                             showCategoryAndGenre = showCategoryAndGenre,
-                            showHint = showHint,
-                            roleIdentity = roleIdentity
+                            showHint = showHint
                         )
-                        if (impostorAbilityEnabled && role == PlayerRole.IMPOSTOR) {
-                            if (isUltimateKiller) {
-                                UltimateKillerAbilityCard(
-                                    candidates = otherPlayers,
-                                    selectedTargetId = selectedKillTargetId,
-                                    onSelectTarget = onSelectKillTarget
-                                )
-                            } else {
-                                OtherImpostorAllyNote()
-                            }
-                        }
-                        if (agentDirectorEnabled && role == PlayerRole.NORMAL && isDirector) {
-                            AgentDirectorBadge()
-                        }
-                        if (saviorAgentEnabled && role == PlayerRole.NORMAL && isSavior) {
-                            SaviorAbilityCard(
+                    }
+                }
+            }
+
+            // Post-flip Special Role Ability Controls
+            if (isRevealed) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    if (impostorAbilityEnabled && isImpostor) {
+                        if (isUltimateKiller) {
+                            UltimateKillerAbilityCard(
                                 candidates = otherPlayers,
-                                selectedProtectedId = selectedProtectedId,
-                                onSelectProtected = onSelectProtectedTarget
+                                selectedTargetId = selectedKillTargetId,
+                                onSelectTarget = onSelectKillTarget
                             )
+                        } else {
+                            OtherImpostorAllyNote()
                         }
-                        if (agentPredictionEnabled && role == PlayerRole.NORMAL) {
-                            AgentPredictionCard(
-                                candidates = otherPlayers,
-                                selectedSuspectId = selectedPredictionId,
-                                onSelectSuspect = onSelectPrediction
-                            )
-                        }
+                    }
+                    if (agentDirectorEnabled && !isImpostor && isDirector) {
+                        AgentDirectorBadge()
+                    }
+                    if (saviorAgentEnabled && !isImpostor && isSavior) {
+                        SaviorAbilityCard(
+                            candidates = otherPlayers,
+                            selectedProtectedId = selectedProtectedId,
+                            onSelectProtected = onSelectProtectedTarget
+                        )
+                    }
+                    if (agentPredictionEnabled && !isImpostor) {
+                        AgentPredictionCard(
+                            candidates = otherPlayers,
+                            selectedSuspectId = selectedPredictionId,
+                            onSelectSuspect = onSelectPrediction
+                        )
                     }
                 }
             }
         }
 
+        // Bottom Fixed Action Button matching the video's "Read your card first" -> active Gold CTA
+        val ctaBg by animateColorAsState(
+            targetValue = when {
+                !isRevealed -> MaterialTheme.colorScheme.surfaceContainerHigh
+                isImpostor -> palette.impostorAccent
+                else -> palette.goldAccent
+            },
+            animationSpec = tween(280),
+            label = "reveal_cta_bg"
+        )
+        val ctaInk = when {
+            !isRevealed -> MaterialTheme.colorScheme.onSurfaceVariant
+            isImpostor -> Color.White
+            else -> palette.goldDarkInk
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
         if (isRevealed) {
-            Button(
+            GoldCtaButton(
+                text = when {
+                    !isLastPlayer -> "Pass the phone"
+                    timerEnabled -> "Got it • start (${turnDurationSeconds}s)"
+                    else -> "Got it • start discussion"
+                },
                 onClick = onHideAndNext,
-                shape = RoundedCornerShape(16.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = buttonAccent,
-                    contentColor = if (role == PlayerRole.IMPOSTOR) Color.White else MaterialTheme.colorScheme.onPrimary
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 20.dp)
-                    .height(56.dp)
-                    .drawBehind {
-                        val spread = 10.dp.toPx()
-                        drawRoundRect(
-                            brush = Brush.radialGradient(
-                                colors = listOf(roleStyle.glow.copy(alpha = 0.28f), Color.Transparent),
-                                radius = maxOf(size.width, size.height) * 0.72f
-                            ),
-                            cornerRadius = CornerRadius(20.dp.toPx(), 20.dp.toPx()),
-                            size = size.copy(width = size.width + spread, height = size.height + spread),
-                            topLeft = Offset(-spread / 2f, -spread / 2f)
-                        )
-                    }
-                    .testTag("local_hide_and_pass_button")
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.VisibilityOff,
-                    contentDescription = null,
-                    modifier = Modifier.padding(end = 8.dp)
-                )
-                Text(
-                    text = when {
-                        !isLastPlayer -> "Hide Card & Pass to Next Player"
-                        timerEnabled -> "Hide Card & Start Timed Turns"
-                        else -> "Hide Card & Start Discussion"
-                    },
-                    style = MaterialTheme.typography.labelLarge
-                )
-            }
+                containerColor = ctaBg,
+                contentColor = ctaInk,
+                modifier = Modifier.testTag("local_hide_and_pass_button")
+            )
         } else {
             Surface(
-                color = MaterialTheme.colorScheme.surfaceContainerLow,
-                shape = RoundedCornerShape(14.dp),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                color = MaterialTheme.colorScheme.surfaceContainer,
+                shape = RoundedCornerShape(18.dp),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 16.dp)
+                    .height(56.dp)
             ) {
-                Row(
-                    modifier = Modifier.padding(14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Lock,
-                        contentDescription = null,
-                        tint = palette.cyanAccent,
-                        modifier = Modifier.size(18.dp)
-                    )
+                Box(contentAlignment = Alignment.Center) {
                     Text(
-                        text = "Privacy Shield Active — Word & role stay hidden until $playerName taps the card.",
-                        style = MaterialTheme.typography.bodyMedium,
+                        text = "Read your card first — Tap card to flip",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
@@ -355,58 +353,42 @@ fun RoleRevealScreen(
 }
 
 @Composable
-private fun TapToRevealOverlayCard(
+private fun CardFrontFace(
     playerName: String,
+    playerIndex: Int,
+    avatarId: String?,
+    avatarPose: AvatarPose,
+    interactionSource: MutableInteractionSource,
     onReveal: () -> Unit
 ) {
     val palette = LocalImpostorPalette.current
-    val interactionSource = remember { MutableInteractionSource() }
-    val isPressed by interactionSource.collectIsPressedAsState()
-    val pressScale by animateFloatAsState(
-        targetValue = if (isPressed) 0.965f else 1.0f,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessMedium
-        ),
-        label = "tap_card_press"
-    )
-
-    val pulseTransition = rememberInfiniteTransition(label = "overlay_pulse")
+    val pulseTransition = rememberInfiniteTransition(label = "front_card_pulse")
     val borderAlpha by pulseTransition.animateFloat(
-        initialValue = 0.45f,
-        targetValue = 0.98f,
+        initialValue = 0.55f,
+        targetValue = 0.96f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1200, easing = FastOutSlowInEasing),
+            animation = tween(1300, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
         ),
-        label = "overlay_border_alpha"
+        label = "front_border_alpha"
     )
-    val rippleRadius by pulseTransition.animateFloat(
-        initialValue = 0.35f,
-        targetValue = 1.0f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1800, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "radar_ripple"
-    )
+
+    val heroChar = remember(avatarId) {
+        AvatarCatalog.findById(avatarId ?: AvatarCatalog.all[playerIndex % AvatarCatalog.all.size].id)
+    }
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(340.dp)
-            .graphicsLayer {
-                scaleX = pressScale
-                scaleY = pressScale
-            }
+            .defaultMinSize(minHeight = 360.dp)
             .drawBehind {
-                val spread = 14.dp.toPx()
+                val spread = 12.dp.toPx()
                 drawRoundRect(
                     brush = Brush.radialGradient(
-                        colors = listOf(palette.cyanAccent.copy(alpha = 0.22f * borderAlpha), Color.Transparent),
+                        colors = listOf(palette.goldAccent.copy(alpha = 0.16f * borderAlpha), Color.Transparent),
                         radius = maxOf(size.width, size.height) * 0.72f
                     ),
-                    cornerRadius = CornerRadius(32.dp.toPx(), 32.dp.toPx()),
+                    cornerRadius = CornerRadius(30.dp.toPx(), 30.dp.toPx()),
                     size = size.copy(width = size.width + spread, height = size.height + spread),
                     topLeft = Offset(-spread / 2f, -spread / 2f)
                 )
@@ -415,14 +397,14 @@ private fun TapToRevealOverlayCard(
             .background(
                 Brush.verticalGradient(
                     colors = listOf(
-                        MaterialTheme.colorScheme.surfaceContainerHigh,
-                        MaterialTheme.colorScheme.surfaceContainer
+                        Color(0xFF2B213A),
+                        Color(0xFF1F172B)
                     )
                 )
             )
             .border(
                 width = 2.dp,
-                color = palette.cyanAccent.copy(alpha = borderAlpha),
+                color = palette.goldAccent.copy(alpha = borderAlpha),
                 shape = RoundedCornerShape(28.dp)
             )
             .clickable(
@@ -430,63 +412,254 @@ private fun TapToRevealOverlayCard(
                 indication = androidx.compose.material3.ripple(),
                 onClick = onReveal
             )
-            .padding(28.dp)
-            .testTag("local_tap_to_reveal_card"),
-        contentAlignment = Alignment.Center
+            .padding(22.dp)
+            .testTag("local_tap_to_reveal_card")
     ) {
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            val maxR = size.minDimension * 0.48f
-            drawCircle(
-                color = palette.cyanAccent.copy(alpha = (1f - rippleRadius) * 0.25f),
-                radius = maxR * rippleRadius,
-                style = Stroke(width = 2.dp.toPx())
-            )
-            val secondaryPhase = (rippleRadius + 0.5f) % 1f
-            drawCircle(
-                color = palette.cyanAccent.copy(alpha = (1f - secondaryPhase) * 0.20f),
-                radius = maxR * secondaryPhase,
-                style = Stroke(width = 1.5.dp.toPx())
-            )
-        }
-
         Column(
+            modifier = Modifier.fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Surface(
-                color = palette.cyanSurface,
-                shape = CircleShape,
-                border = BorderStroke(1.dp, palette.cyanAccent.copy(alpha = borderAlpha))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    imageVector = Icons.Filled.TouchApp,
-                    contentDescription = "Tap to reveal secret role",
-                    tint = palette.cyanAccent,
-                    modifier = Modifier
-                        .padding(20.dp)
-                        .size(38.dp)
+                Text(
+                    text = "PLAYER ${playerIndex + 1}",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = palette.goldAccent,
+                    fontWeight = FontWeight.Bold
                 )
+                Surface(
+                    color = palette.goldSurface,
+                    shape = CircleShape,
+                    border = BorderStroke(1.dp, palette.goldAccent.copy(alpha = 0.5f)),
+                    modifier = Modifier.size(34.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Filled.FlipCameraAndroid,
+                            contentDescription = "Flip role card",
+                            tint = palette.goldAccent,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
             }
-            Spacer(modifier = Modifier.height(22.dp))
-            Text(
-                text = "PASS PHONE TO",
-                style = MaterialTheme.typography.labelMedium,
-                color = palette.cyanAccent
+
+            FloatingHeroSprite(
+                character = heroChar,
+                pose = avatarPose,
+                size = 200.dp,
+                bobOffsetDp = 4f,
+                isFocal = true
             )
-            Spacer(modifier = Modifier.height(6.dp))
+
             Text(
                 text = playerName,
-                style = MaterialTheme.typography.displayMedium,
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.ExtraBold,
                 color = MaterialTheme.colorScheme.onSurface,
                 textAlign = TextAlign.Center
             )
-            Spacer(modifier = Modifier.height(12.dp))
-            Text(
-                text = "Make sure no other players are looking.\nTap anywhere on this card to reveal your role.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center
-            )
+
+            Surface(
+                color = palette.goldSurface,
+                shape = RoundedCornerShape(50),
+                border = BorderStroke(1.dp, palette.goldAccent.copy(alpha = borderAlpha))
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.TouchApp,
+                        contentDescription = null,
+                        tint = palette.goldAccent,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Text(
+                        text = "Tap to flip",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = palette.goldAccent
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CardBackFace(
+    role: PlayerRole,
+    roleIdentity: GameRoleIdentity,
+    category: String,
+    genre: String,
+    secretWord: String,
+    hint: String,
+    showCategoryAndGenre: Boolean,
+    showHint: Boolean
+) {
+    val palette = LocalImpostorPalette.current
+    val isImpostor = role == PlayerRole.IMPOSTOR
+    val targetStyle = roleIdentity.style(palette)
+    val hasCategory = showCategoryAndGenre && (category.isNotBlank() || genre.isNotBlank())
+    val hasHint = showHint && hint.isNotBlank()
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag(if (isImpostor) "role_card_impostor" else "role_card_normal"),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .defaultMinSize(minHeight = 320.dp)
+                .clip(RoundedCornerShape(28.dp))
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            targetStyle.deepSurface,
+                            MaterialTheme.colorScheme.surface
+                        )
+                    )
+                )
+                .border(
+                    width = 2.dp,
+                    brush = Brush.linearGradient(
+                        colors = listOf(targetStyle.glow, targetStyle.accent, targetStyle.border)
+                    ),
+                    shape = RoundedCornerShape(28.dp)
+                )
+                .padding(22.dp)
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                RoleEmblemChip(
+                    identity = roleIdentity,
+                    badgeSize = 24.dp,
+                    labelOverride = roleIdentity.displayTitle
+                )
+
+                HorizontalDivider(color = targetStyle.accent.copy(alpha = 0.28f))
+
+                if (isImpostor) {
+                    Text(
+                        text = if (roleIdentity == GameRoleIdentity.AGENT_KILLER) {
+                            "YOU ARE THE AGENT KILLER"
+                        } else {
+                            "YOU ARE THE IMPOSTOR"
+                        },
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = targetStyle.glow,
+                        textAlign = TextAlign.Center
+                    )
+                    Text(
+                        text = if (roleIdentity == GameRoleIdentity.AGENT_KILLER) {
+                            "Keep calm. Listen. Blend in — and void 1 vote below."
+                        } else {
+                            "Keep calm. Listen. Blend in — or deduce the secret word."
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center
+                    )
+                } else {
+                    Text(
+                        text = "YOUR SECRET WORD",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = palette.goldAccent
+                    )
+                    Text(
+                        text = secretWord,
+                        style = MaterialTheme.typography.displayLarge,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = MaterialTheme.colorScheme.onBackground,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.testTag("secret_word_text")
+                    )
+                    Text(
+                        text = "Give a clue. Keep the word secret.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center
+                    )
+                }
+
+                if (hasCategory) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.surfaceContainerLowest,
+                        shape = RoundedCornerShape(14.dp),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = category.ifEmpty { "General" },
+                                style = MaterialTheme.typography.labelLarge,
+                                color = palette.goldAccent
+                            )
+                            Text(
+                                text = genre.ifEmpty { category },
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.testTag("word_genre_text")
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        if (hasHint) {
+            Surface(
+                color = targetStyle.deepSurface,
+                shape = RoundedCornerShape(18.dp),
+                border = BorderStroke(1.2.dp, targetStyle.glow.copy(alpha = 0.7f)),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag(if (isImpostor) "hint_box_red" else "hint_box_green")
+            ) {
+                Row(
+                    modifier = Modifier.padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Lightbulb,
+                        contentDescription = "Word hint",
+                        tint = targetStyle.glow,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = if (isImpostor) "IMPOSTOR HINT" else "AGENT HINT",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = targetStyle.glow
+                        )
+                        Text(
+                            text = hint,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+            }
         }
     }
 }

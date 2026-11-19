@@ -13,6 +13,12 @@ import androidx.compose.ui.unit.dp
 
 @Immutable
 data class ImpostorRolePalette(
+    val goldAccent: Color = ButterGold,
+    val goldGlow: Color = ButterGoldBright,
+    val goldSurface: Color = ButterGoldDeep,
+    val goldDarkInk: Color = DarkPlumInk,
+    val plumCard: Color = ObsidianSurfaceHigh,
+    val plumBorder: Color = ObsidianOutline,
     val normalAccent: Color = NormalGreen,
     val normalGlow: Color = NormalGreenGlow,
     val normalSurface: Color = NormalGreenDeep,
@@ -35,8 +41,8 @@ data class ImpostorRolePalette(
     val directorBorder: Color = DirectorGoldBorder,
     val timerAccent: Color = AmberTimer,
     val timerSurface: Color = AmberContainer,
-    val cyanAccent: Color = ElectricCyan,
-    val cyanSurface: Color = ElectricCyanContainer,
+    val cyanAccent: Color = ButterGold,
+    val cyanSurface: Color = ButterGoldDeep,
     val cardElevated: Color = ObsidianSurfaceHigh,
     val cardBorder: Color = ObsidianOutline,
     val textMuted: Color = TextMuted
@@ -45,18 +51,18 @@ data class ImpostorRolePalette(
 val LocalImpostorPalette = staticCompositionLocalOf { ImpostorRolePalette() }
 
 private val ImpostorDarkColorScheme = darkColorScheme(
-    primary = ElectricCyan,
-    onPrimary = ObsidianBg,
-    primaryContainer = ElectricCyanContainer,
-    onPrimaryContainer = TextPrimary,
+    primary = ButterGold,
+    onPrimary = DarkPlumInk,
+    primaryContainer = ButterGoldDeep,
+    onPrimaryContainer = ButterGoldBright,
     secondary = NormalGreen,
-    onSecondary = ObsidianBg,
+    onSecondary = DarkPlumInk,
     secondaryContainer = NormalGreenDeep,
     onSecondaryContainer = NormalGreenGlow,
-    tertiary = AmberTimer,
-    onTertiary = ObsidianBg,
-    tertiaryContainer = AmberContainer,
-    onTertiaryContainer = AmberTimer,
+    tertiary = ButterGold,
+    onTertiary = DarkPlumInk,
+    tertiaryContainer = ButterGoldDeep,
+    onTertiaryContainer = ButterGoldBright,
     error = ImpostorRed,
     onError = TextPrimary,
     errorContainer = ImpostorRedDeep,
@@ -67,17 +73,17 @@ private val ImpostorDarkColorScheme = darkColorScheme(
     onSurface = TextPrimary,
     surfaceVariant = ObsidianSurfaceHigh,
     onSurfaceVariant = TextSecondary,
-    surfaceContainerLowest = ObsidianBg,
+    surfaceContainerLowest = Color(0xFF16101E),
     surfaceContainerLow = ObsidianSurface,
     surfaceContainer = ObsidianSurfaceHigh,
     surfaceContainerHigh = ObsidianSurfaceBright,
     outline = ObsidianOutline,
-    outlineVariant = Color(0xFF22293F)
+    outlineVariant = Color(0xFF352A44)
 )
 
 private val ImpostorShapes = Shapes(
-    small = RoundedCornerShape(10.dp),
-    medium = RoundedCornerShape(16.dp),
+    small = RoundedCornerShape(12.dp),
+    medium = RoundedCornerShape(18.dp),
     large = RoundedCornerShape(24.dp),
     extraLarge = RoundedCornerShape(28.dp)
 )

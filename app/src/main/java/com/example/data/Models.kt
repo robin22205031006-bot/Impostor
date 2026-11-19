@@ -28,7 +28,9 @@ enum class TurnStatus(val label: String) {
 data class LocalPlayer(
     val id: String,
     val name: String,
-    val score: Int = 0
+    val score: Int = 0,
+    val avatarId: String = AvatarCatalog.defaultIdForSeed(id),
+    val avatarPose: AvatarPose = AvatarPose.ORIGINAL
 )
 
 data class EmergencyMeetingAlert(
@@ -41,10 +43,10 @@ data class EmergencyMeetingAlert(
 data class GameState(
     val phase: GamePhase = GamePhase.LOBBY,
     val players: List<LocalPlayer> = listOf(
-        LocalPlayer(id = "p1", name = "Player 1"),
-        LocalPlayer(id = "p2", name = "Player 2"),
-        LocalPlayer(id = "p3", name = "Player 3"),
-        LocalPlayer(id = "p4", name = "Player 4")
+        LocalPlayer(id = "p1", name = "Player 1", avatarId = "avatar_05", avatarPose = AvatarPose.ORIGINAL),
+        LocalPlayer(id = "p2", name = "Player 2", avatarId = "avatar_08", avatarPose = AvatarPose.ORIGINAL),
+        LocalPlayer(id = "p3", name = "Player 3", avatarId = "avatar_01", avatarPose = AvatarPose.ORIGINAL),
+        LocalPlayer(id = "p4", name = "Player 4", avatarId = "avatar_09", avatarPose = AvatarPose.ORIGINAL)
     ),
     val impostorCount: Int = 1,
     val playerRoles: Map<String, PlayerRole> = emptyMap(),

@@ -355,6 +355,12 @@ object WordBank {
         return CryptoRandom.pickOne(finalPool) ?: finalPool[random.nextInt(finalPool.size)]
     }
 
+    fun wordsForCategory(category: String): List<WordEntry> = when {
+        category == CATEGORY_ALL -> entries
+        isCustomCategory(category) -> _customWordsFlow.value
+        else -> entries.filter { it.category.equals(category, ignoreCase = true) }
+    }
+
     fun isGuessMatch(guess: String, secretWord: String): Boolean {
         val normalizedGuess = guess.trim().lowercase().replace(Regex("[^a-z0-9]"), "")
         val normalizedTarget = secretWord.trim().lowercase().replace(Regex("[^a-z0-9]"), "")

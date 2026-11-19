@@ -3,6 +3,8 @@ package com.example.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.audio.SoundCuePlayer
+import com.example.data.AvatarCatalog
+import com.example.data.AvatarPose
 import com.example.data.CryptoRandom
 import com.example.data.EmergencyMeetingAlert
 import com.example.data.GameMode
@@ -20,6 +22,14 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.util.UUID
 
+enum class SetupWizardStep {
+    WELCOME,
+    MODE_PICK,
+    PLAYERS,
+    RULES,
+    PACKS
+}
+
 enum class LocalPhase {
     SETUP,
     REVEAL,
@@ -30,16 +40,18 @@ enum class LocalPhase {
 
 data class LocalGameUiState(
     val phase: LocalPhase = LocalPhase.SETUP,
+    val setupStep: SetupWizardStep = SetupWizardStep.WELCOME,
     val players: List<LocalPlayer> = listOf(
-        LocalPlayer(id = "p1", name = "Player 1"),
-        LocalPlayer(id = "p2", name = "Player 2"),
-        LocalPlayer(id = "p3", name = "Player 3"),
-        LocalPlayer(id = "p4", name = "Player 4")
+        LocalPlayer(id = "p1", name = "Player 1", avatarId = "avatar_05", avatarPose = AvatarPose.ORIGINAL),
+        LocalPlayer(id = "p2", name = "Player 2", avatarId = "avatar_08", avatarPose = AvatarPose.ORIGINAL),
+        LocalPlayer(id = "p3", name = "Player 3", avatarId = "avatar_01", avatarPose = AvatarPose.ORIGINAL),
+        LocalPlayer(id = "p4", name = "Player 4", avatarId = "avatar_09", avatarPose = AvatarPose.ORIGINAL)
     ),
     val gameMode: GameMode = GameMode.CLASSIC,
     val impostorCount: Int = 1,
     val turnDurationSeconds: Int = 45,
     val selectedCategory: String = WordBank.CATEGORY_ALL,
+    val favoritePacks: Set<String> = emptySet(),
     val hintsEnabled: Boolean = true,
     val categoryCluesEnabled: Boolean = true,
     val timerEnabled: Boolean = true,
@@ -90,13 +102,32 @@ class LocalGameViewModel : ViewModel() {
         _uiState.update { it.copy(errorBanner = null) }
     }
 
+    fun setSetupStep(step: SetupWizardStep) {
+        _uiState.update { it.copy(setupStep = step, errorBanner = null) }
+    }
+
+    fun toggleFavoritePack(category: String) {
+        _uiState.update { curr ->
+            val nextFavs = if (category in curr.favoritePacks) {
+                curr.favoritePacks - category
+            } else {
+                curr.favoritePacks + category
+            }
+            curr.copy(favoritePacks = nextFavs)
+        }
+    }
+
     fun addPlayer(rawName: String) {
         val trimmed = rawName.trim().take(24)
         val state = _uiState.value
         val finalName = trimmed.ifEmpty { "Player ${state.players.size + 1}" }
+        val usedIds = state.players.map { it.avatarId }.toSet()
+        val pickedAvatar = AvatarCatalog.nextAvailableAvatar(usedIds, state.players.size)
         val newPlayer = LocalPlayer(
             id = UUID.randomUUID().toString().take(8),
-            name = finalName
+            name = finalName,
+            avatarId = pickedAvatar.id,
+            avatarPose = AvatarPose.ORIGINAL
         )
         _uiState.update { curr ->
             curr.copy(
@@ -113,6 +144,38 @@ class LocalGameViewModel : ViewModel() {
             curr.copy(
                 players = curr.players.map {
                     if (it.id == playerId) it.copy(name = trimmed) else it
+                }
+            )
+        }
+    }
+
+    fun setPlayerAvatar(playerId: String, avatarId: String, pose: AvatarPose? = null) {
+        val validAvatarId = AvatarCatalog.findById(avatarId).id
+        _uiState.update { curr ->
+            curr.copy(
+                players = curr.players.map { player ->
+                    if (player.id == playerId) {
+                        player.copy(
+                            avatarId = validAvatarId,
+                            avatarPose = pose ?: player.avatarPose
+                        )
+                    } else {
+                        player
+                    }
+                }
+            )
+        }
+    }
+
+    fun cyclePlayerPose(playerId: String) {
+        _uiState.update { curr ->
+            curr.copy(
+                players = curr.players.map { player ->
+                    if (player.id == playerId) {
+                        player.copy(avatarPose = player.avatarPose.next())
+                    } else {
+                        player
+                    }
                 }
             )
         }
@@ -141,10 +204,15 @@ class LocalGameViewModel : ViewModel() {
             } else if (clampedCount < curr.players.size) {
                 curr.players.take(clampedCount)
             } else {
+                val used = curr.players.map { it.avatarId }.toMutableSet()
                 val extras = (curr.players.size + 1..clampedCount).map { idx ->
+                    val nextAvatar = AvatarCatalog.nextAvailableAvatar(used, idx - 1)
+                    used.add(nextAvatar.id)
                     LocalPlayer(
                         id = UUID.randomUUID().toString().take(8),
-                        name = "Player $idx"
+                        name = "Player $idx",
+                        avatarId = nextAvatar.id,
+                        avatarPose = AvatarPose.ORIGINAL
                     )
                 }
                 curr.players + extras
@@ -503,11 +571,12 @@ class LocalGameViewModel : ViewModel() {
         }
     }
 
-    fun returnToSetup() {
+    fun returnToSetup(step: SetupWizardStep = SetupWizardStep.PLAYERS) {
         stopTimer()
         _uiState.update {
             it.copy(
                 phase = LocalPhase.SETUP,
+                setupStep = step,
                 isRoleCardVisible = false,
                 errorBanner = null
             )

@@ -52,13 +52,13 @@ import kotlin.math.sin
 @Composable
 fun ImpostorAnimatedBackdrop(
     modifier: Modifier = Modifier,
-    primaryOrbColor: Color = LocalImpostorPalette.current.cyanAccent,
-    secondaryOrbColor: Color = LocalImpostorPalette.current.normalAccent,
-    tertiaryOrbColor: Color = LocalImpostorPalette.current.impostorAccent,
+    primaryOrbColor: Color = LocalImpostorPalette.current.goldAccent,
+    secondaryOrbColor: Color = Color(0xFF4A3168),
+    tertiaryOrbColor: Color = Color(0xFF39264E),
     content: @Composable BoxScope.() -> Unit
 ) {
     val bgTop = MaterialTheme.colorScheme.background
-    val bgBottom = MaterialTheme.colorScheme.surface
+    val bgBottom = Color(0xFF171120)
 
     val animatedPrimary by animateColorAsState(
         targetValue = primaryOrbColor,
@@ -81,16 +81,16 @@ fun ImpostorAnimatedBackdrop(
         initialValue = 0f,
         targetValue = (2f * PI).toFloat(),
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 15000, easing = LinearEasing),
+            animation = tween(durationMillis = 16000, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
         label = "ambient_phase"
     )
     val breathe by transition.animateFloat(
-        initialValue = 0.86f,
-        targetValue = 1.18f,
+        initialValue = 0.88f,
+        targetValue = 1.15f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 4400, easing = FastOutSlowInEasing),
+            animation = tween(durationMillis = 4600, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
         ),
         label = "ambient_breathe"
@@ -101,7 +101,7 @@ fun ImpostorAnimatedBackdrop(
             .fillMaxSize()
             .background(
                 Brush.verticalGradient(
-                    colors = listOf(bgTop, bgBottom, bgTop)
+                    colors = listOf(bgTop, MaterialTheme.colorScheme.surface, bgBottom)
                 )
             )
     ) {
@@ -109,78 +109,42 @@ fun ImpostorAnimatedBackdrop(
             val w = size.width
             val h = size.height
 
-            // Top-right drifting primary aurora
-            val c1 = Offset(
-                x = w * (0.78f + 0.14f * cos(phase)),
-                y = h * (0.14f + 0.07f * sin(phase))
+            // Soft centered plum-gold stage halo matching the reference video warmth
+            val stageCenter = Offset(
+                x = w * (0.50f + 0.06f * cos(phase)),
+                y = h * (0.28f + 0.04f * sin(phase))
             )
             drawCircle(
                 brush = Brush.radialGradient(
                     colors = listOf(
-                        animatedPrimary.copy(alpha = 0.19f * breathe),
-                        animatedPrimary.copy(alpha = 0.05f),
+                        animatedPrimary.copy(alpha = 0.11f * breathe),
+                        animatedSecondary.copy(alpha = 0.09f),
                         Color.Transparent
                     ),
-                    center = c1,
-                    radius = w * 0.78f
+                    center = stageCenter,
+                    radius = w * 0.86f
                 ),
-                radius = w * 0.78f,
-                center = c1
+                radius = w * 0.86f,
+                center = stageCenter
             )
 
-            // Bottom-left drifting secondary orb
+            // Bottom ambient plum glow
             val c2 = Offset(
-                x = w * (0.18f + 0.11f * sin(phase * 0.8f)),
-                y = h * (0.78f + 0.08f * cos(phase * 0.8f))
+                x = w * (0.26f + 0.10f * sin(phase * 0.8f)),
+                y = h * (0.82f + 0.05f * cos(phase * 0.8f))
             )
             drawCircle(
                 brush = Brush.radialGradient(
                     colors = listOf(
-                        animatedSecondary.copy(alpha = 0.15f * breathe),
-                        animatedSecondary.copy(alpha = 0.04f),
+                        animatedTertiary.copy(alpha = 0.16f * breathe),
                         Color.Transparent
                     ),
                     center = c2,
-                    radius = w * 0.70f
+                    radius = w * 0.75f
                 ),
-                radius = w * 0.70f,
+                radius = w * 0.75f,
                 center = c2
             )
-
-            // Mid-right tertiary atmospheric glow
-            val c3 = Offset(
-                x = w * (0.85f - 0.12f * sin(phase)),
-                y = h * (0.50f + 0.08f * cos(phase))
-            )
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(
-                        animatedTertiary.copy(alpha = 0.11f * breathe),
-                        Color.Transparent
-                    ),
-                    center = c3,
-                    radius = w * 0.60f
-                ),
-                radius = w * 0.60f,
-                center = c3
-            )
-
-            // Tactical subtle dot matrix texture
-            val spacing = 30.dp.toPx()
-            val dotRadius = 1.dp.toPx()
-            var y = spacing * 0.5f
-            while (y < h) {
-                var x = spacing * 0.5f
-                while (x < w) {
-                    drawCircle(
-                        color = Color.White.copy(alpha = 0.035f),
-                        radius = dotRadius,
-                        center = Offset(x, y)
-                    )
-                    x += spacing
-                }
-                y += spacing
-            }
         }
 
         content()
@@ -191,7 +155,7 @@ fun ImpostorAnimatedBackdrop(
 fun GlassSectionCard(
     title: String,
     icon: ImageVector? = null,
-    accentColor: Color = LocalImpostorPalette.current.cyanAccent,
+    accentColor: Color = LocalImpostorPalette.current.goldAccent,
     trailing: (@Composable () -> Unit)? = null,
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit
@@ -206,39 +170,18 @@ fun GlassSectionCard(
                     stiffness = Spring.StiffnessMediumLow
                 )
             )
-            .drawBehind {
-                val spread = 8.dp.toPx()
-                drawRoundRect(
-                    brush = Brush.radialGradient(
-                        colors = listOf(
-                            accentColor.copy(alpha = 0.14f),
-                            Color.Transparent
-                        ),
-                        radius = maxOf(size.width, size.height) * 0.75f
-                    ),
-                    cornerRadius = CornerRadius(24.dp.toPx(), 24.dp.toPx()),
-                    size = size.copy(width = size.width + spread, height = size.height + spread),
-                    topLeft = Offset(-spread / 2f, -spread / 2f)
-                )
-            }
             .clip(shape)
             .background(
                 Brush.verticalGradient(
                     colors = listOf(
-                        MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.88f),
-                        MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.94f)
+                        MaterialTheme.colorScheme.surfaceContainer,
+                        MaterialTheme.colorScheme.surfaceContainerLow
                     )
                 )
             )
             .border(
                 width = 1.dp,
-                brush = Brush.linearGradient(
-                    colors = listOf(
-                        accentColor.copy(alpha = 0.48f),
-                        MaterialTheme.colorScheme.outline.copy(alpha = 0.55f),
-                        accentColor.copy(alpha = 0.18f)
-                    )
-                ),
+                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.75f),
                 shape = shape
             )
     ) {
@@ -259,7 +202,7 @@ fun GlassSectionCard(
                     if (icon != null) {
                         Surface(
                             color = accentColor.copy(alpha = 0.16f),
-                            shape = RoundedCornerShape(8.dp)
+                            shape = RoundedCornerShape(10.dp)
                         ) {
                             Icon(
                                 imageVector = icon,
@@ -294,7 +237,7 @@ fun PulsingStatusDot(
 ) {
     val transition = rememberInfiniteTransition(label = "status_dot")
     val alpha by transition.animateFloat(
-        initialValue = 0.35f,
+        initialValue = 0.40f,
         targetValue = 1.0f,
         animationSpec = infiniteRepeatable(
             animation = tween(durationMillis = 850, easing = FastOutSlowInEasing),

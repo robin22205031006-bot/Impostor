@@ -56,6 +56,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.example.data.AvatarCatalog
 import com.example.data.GameState
 import com.example.data.LocalPlayer
 import com.example.ui.theme.LocalImpostorPalette
@@ -249,30 +250,32 @@ fun VotingPlayerCard(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Surface(
-                color = if (isSelected) palette.impostorAccent.copy(alpha = 0.25f) else MaterialTheme.colorScheme.surfaceContainerHigh,
-                shape = CircleShape,
-                border = BorderStroke(
-                    width = 1.dp,
-                    color = if (isSelected) palette.impostorGlow else MaterialTheme.colorScheme.outlineVariant
-                ),
-                modifier = Modifier.size(42.dp)
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    if (isSelected) {
-                        Icon(
-                            imageVector = Icons.Filled.GpsFixed,
-                            contentDescription = "Selected suspect ${player.name}",
-                            tint = palette.impostorGlow,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    } else {
-                        Text(
-                            text = player.name.take(1).uppercase(),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = palette.cyanAccent
-                        )
+            val avatarChar = AvatarCatalog.findById(player.avatarId)
+            Box(contentAlignment = Alignment.Center) {
+                CharacterAvatarThumbnail(
+                    character = avatarChar,
+                    pose = player.avatarPose,
+                    size = 46.dp,
+                    borderColor = if (isSelected) palette.impostorGlow else avatarChar.glowColor,
+                    isHighlighted = isSelected
+                )
+                if (isSelected) {
+                    Surface(
+                        color = palette.impostorAccent,
+                        shape = CircleShape,
+                        border = BorderStroke(1.dp, Color.White),
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .size(20.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Filled.GpsFixed,
+                                contentDescription = "Selected suspect ${player.name}",
+                                tint = Color.White,
+                                modifier = Modifier.size(12.dp)
+                            )
+                        }
                     }
                 }
             }

@@ -65,6 +65,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.example.data.AvatarCatalog
+import com.example.data.AvatarPose
 import com.example.ui.theme.LocalImpostorPalette
 import kotlinx.coroutines.delay
 
@@ -73,7 +75,9 @@ data class EliminatedPlayerReveal(
     val name: String,
     val isImpostor: Boolean,
     val voteCount: Int,
-    val roleIdentity: GameRoleIdentity = if (isImpostor) GameRoleIdentity.IMPOSTOR else GameRoleIdentity.AGENT
+    val roleIdentity: GameRoleIdentity = if (isImpostor) GameRoleIdentity.IMPOSTOR else GameRoleIdentity.AGENT,
+    val avatarId: String = AvatarCatalog.defaultIdForSeed(id),
+    val avatarPose: AvatarPose = AvatarPose.ORIGINAL
 )
 
 @Composable
@@ -248,11 +252,56 @@ fun EliminationRevealOverlay(
                             label = "elimination_emblem_swap"
                         ) { showEmblem ->
                             if (showEmblem) {
-                                RoleEmblemBadge(
-                                    identity = primaryIdentity,
-                                    size = 76.dp,
-                                    animated = true
-                                )
+                                if (singleTarget != null) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                    ) {
+                                        CharacterAvatarThumbnail(
+                                            character = AvatarCatalog.findById(singleTarget.avatarId),
+                                            pose = singleTarget.avatarPose,
+                                            size = 72.dp,
+                                            borderColor = animatedGlow,
+                                            isHighlighted = true
+                                        )
+                                        RoleEmblemBadge(
+                                            identity = primaryIdentity,
+                                            size = 72.dp,
+                                            animated = true
+                                        )
+                                    }
+                                } else {
+                                    RoleEmblemBadge(
+                                        identity = primaryIdentity,
+                                        size = 76.dp,
+                                        animated = true
+                                    )
+                                }
+                            } else if (singleTarget != null) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    CharacterAvatarThumbnail(
+                                        character = AvatarCatalog.findById(singleTarget.avatarId),
+                                        pose = singleTarget.avatarPose,
+                                        size = 74.dp,
+                                        borderColor = animatedAccent,
+                                        isHighlighted = true
+                                    )
+                                    Surface(
+                                        color = animatedSurface,
+                                        shape = CircleShape,
+                                        border = BorderStroke(1.5.dp, animatedAccent),
+                                        modifier = Modifier.align(Alignment.BottomEnd)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.HowToVote,
+                                            contentDescription = "Elimination verdict icon",
+                                            tint = animatedGlow,
+                                            modifier = Modifier
+                                                .padding(5.dp)
+                                                .size(16.dp)
+                                        )
+                                    }
+                                }
                             } else {
                                 Surface(
                                     color = animatedAccent.copy(alpha = 0.16f),
@@ -342,10 +391,18 @@ fun EliminationRevealOverlay(
                                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                                                 modifier = Modifier.weight(1f)
                                             ) {
+                                                val targetChar = AvatarCatalog.findById(target.avatarId)
+                                                CharacterAvatarThumbnail(
+                                                    character = targetChar,
+                                                    pose = target.avatarPose,
+                                                    size = 34.dp,
+                                                    borderColor = if (roleRevealed) targetStyle.glow else targetChar.glowColor,
+                                                    isHighlighted = roleRevealed
+                                                )
                                                 if (roleRevealed) {
                                                     RoleEmblemBadge(
                                                         identity = target.roleIdentity,
-                                                        size = 28.dp,
+                                                        size = 24.dp,
                                                         animated = true
                                                     )
                                                 }
