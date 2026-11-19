@@ -70,8 +70,17 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.GameMode
 import com.example.data.LocalPlayer
 import com.example.data.WordBank
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import com.example.ui.components.GameRoleIdentity
 import com.example.ui.components.GlassSectionCard
+import com.example.ui.components.RoleEmblemBadge
+import com.example.ui.components.RoleEmblemChip
 import com.example.ui.components.WordCategoryBox
+import com.example.ui.components.style
 import com.example.ui.theme.LocalImpostorPalette
 import com.example.viewmodel.LocalGameUiState
 
@@ -298,7 +307,8 @@ fun GameSetupScreen(
                         subtitle = "One impostor can void a player's vote during voting",
                         checked = state.impostorAbilityEnabled,
                         onCheckedChange = onToggleImpostorAbility,
-                        tag = "toggle_impostor_ability_switch"
+                        tag = "toggle_impostor_ability_switch",
+                        roleIdentity = GameRoleIdentity.AGENT_KILLER
                     )
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     HostToggleRow(
@@ -306,7 +316,8 @@ fun GameSetupScreen(
                         subtitle = "One agent can shield a teammate from Agent Killer (+1 bonus if saved)",
                         checked = state.saviorAgentEnabled,
                         onCheckedChange = onToggleSaviorAgent,
-                        tag = "toggle_savior_agent_switch"
+                        tag = "toggle_savior_agent_switch",
+                        roleIdentity = GameRoleIdentity.SAVIOR_AGENT
                     )
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     HostToggleRow(
@@ -314,7 +325,8 @@ fun GameSetupScreen(
                         subtitle = "One agent's vote counts as 2 votes (no wrong-vote deduction)",
                         checked = state.agentDirectorEnabled,
                         onCheckedChange = onToggleAgentDirector,
-                        tag = "toggle_agent_director_switch"
+                        tag = "toggle_agent_director_switch",
+                        roleIdentity = GameRoleIdentity.AGENT_DIRECTOR
                     )
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     HostToggleRow(
@@ -322,8 +334,26 @@ fun GameSetupScreen(
                         subtitle = "Agents may predict an impostor (+3/+1 or -2 pts)",
                         checked = state.agentPredictionEnabled,
                         onCheckedChange = onToggleAgentPrediction,
-                        tag = "toggle_agent_prediction_switch"
+                        tag = "toggle_agent_prediction_switch",
+                        roleIdentity = GameRoleIdentity.AGENT
                     )
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            text = "ROLE EMBLEMS & COLORS",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Row(
+                            modifier = Modifier.horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            GameRoleIdentity.entries.forEach { identity ->
+                                RoleEmblemChip(identity = identity, badgeSize = 22.dp)
+                            }
+                        }
+                    }
 
                     AnimatedVisibility(
                         visible = state.timerEnabled,
@@ -495,6 +525,18 @@ fun GameSetupScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(58.dp)
+                    .drawBehind {
+                        val spread = 12.dp.toPx()
+                        drawRoundRect(
+                            brush = Brush.radialGradient(
+                                colors = listOf(palette.normalGlow.copy(alpha = 0.30f), Color.Transparent),
+                                radius = maxOf(size.width, size.height) * 0.72f
+                            ),
+                            cornerRadius = CornerRadius(20.dp.toPx(), 20.dp.toPx()),
+                            size = size.copy(width = size.width + spread, height = size.height + spread),
+                            topLeft = Offset(-spread / 2f, -spread / 2f)
+                        )
+                    }
                     .testTag("local_start_round_button")
             ) {
                 Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.padding(end = 8.dp))
@@ -548,14 +590,25 @@ private fun HostToggleRow(
     subtitle: String,
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
-    tag: String
+    tag: String,
+    roleIdentity: GameRoleIdentity? = null
 ) {
     val palette = LocalImpostorPalette.current
+    val roleStyle = roleIdentity?.style(palette)
+    val trackColor = roleStyle?.accent ?: palette.normalAccent
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
+        if (roleIdentity != null) {
+            RoleEmblemBadge(
+                identity = roleIdentity,
+                size = 32.dp,
+                animated = checked,
+                modifier = Modifier.padding(end = 10.dp)
+            )
+        }
         Column(
             modifier = Modifier
                 .weight(1f)
@@ -564,7 +617,7 @@ private fun HostToggleRow(
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurface
+                color = if (checked && roleStyle != null) roleStyle.glow else MaterialTheme.colorScheme.onSurface
             )
             Text(
                 text = subtitle,
@@ -576,8 +629,8 @@ private fun HostToggleRow(
             checked = checked,
             onCheckedChange = onCheckedChange,
             colors = SwitchDefaults.colors(
-                checkedThumbColor = MaterialTheme.colorScheme.onSecondary,
-                checkedTrackColor = palette.normalAccent
+                checkedThumbColor = Color.White,
+                checkedTrackColor = trackColor
             ),
             modifier = Modifier.testTag(tag)
         )

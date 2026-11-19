@@ -44,7 +44,6 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.GpsFixed
 import androidx.compose.material.icons.filled.HowToVote
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.TouchApp
@@ -82,33 +81,90 @@ import com.example.ui.components.AgentDirectorBadge
 import com.example.ui.components.AgentPredictionCard
 import com.example.ui.components.EliminatedPlayerReveal
 import com.example.ui.components.EliminationRevealOverlay
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.material.icons.filled.NotificationsActive
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import com.example.ui.components.GameRoleIdentity
 import com.example.ui.components.ImpostorAnimatedBackdrop
 import com.example.ui.components.OtherImpostorAllyNote
 import com.example.ui.components.PulsingStatusDot
+import com.example.ui.components.RoleEmblemBadge
+import com.example.ui.components.RoleEmblemChip
 import com.example.ui.components.RoleWordCard
 import com.example.ui.components.SaviorAbilityCard
+import com.example.ui.components.TurnExpiredBroadcast
 import com.example.ui.components.TurnTimerBar
+import com.example.ui.components.TurnTimerEventBus
 import com.example.ui.components.UltimateKillerAbilityCard
+import com.example.ui.components.style
 import com.example.ui.theme.LocalImpostorPalette
 import com.example.viewmodel.LocalGameUiState
 import com.example.viewmodel.LocalGameViewModel
 import com.example.viewmodel.LocalPhase
+import kotlinx.coroutines.flow.collectLatest
 
 @Composable
 fun LocalGameScreen(
-    viewModel: LocalGameViewModel,
-    onOpenOnline: () -> Unit
+    viewModel: LocalGameViewModel
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val soundEnabled by SoundCuePlayer.soundEnabled.collectAsStateWithLifecycle()
     val palette = LocalImpostorPalette.current
     var dismissedEliminationRound by rememberSaveable { mutableIntStateOf(0) }
+    var showConfirmExitDialog by remember { mutableStateOf(false) }
+
+    val isRoundInProgress = state.phase == LocalPhase.REVEAL ||
+        state.phase == LocalPhase.PLAYING ||
+        state.phase == LocalPhase.VOTING
 
     BackHandler(enabled = state.phase != LocalPhase.SETUP) {
-        viewModel.returnToSetup()
+        if (isRoundInProgress) {
+            showConfirmExitDialog = true
+        } else {
+            viewModel.returnToSetup()
+        }
     }
 
-    ImpostorAnimatedBackdrop {
+    val revealPlayer = state.players.getOrNull(state.revealPlayerIndex)
+    val revealedIdentity = if (state.phase == LocalPhase.REVEAL && state.isRoleCardVisible && revealPlayer != null) {
+        GameRoleIdentity.resolve(
+            role = viewModel.roleFor(revealPlayer.id),
+            isUltimateKiller = state.impostorAbilityEnabled && state.ultimateKillerId == revealPlayer.id,
+            isSavior = state.saviorAgentEnabled && state.saviorAgentId == revealPlayer.id,
+            isDirector = state.agentDirectorEnabled && state.agentDirectorId == revealPlayer.id
+        )
+    } else null
+
+    val isTimerUrgentOrExpired = state.phase == LocalPhase.PLAYING &&
+        state.timerEnabled &&
+        !state.isTimerPaused &&
+        state.remainingTurnSeconds <= 5
+
+    val (orbPrimary, orbSecondary, orbTertiary) = when {
+        revealedIdentity != null -> {
+            val s = revealedIdentity.style(palette)
+            Triple(s.glow, s.accent, s.deepSurface)
+        }
+        isTimerUrgentOrExpired -> Triple(palette.impostorGlow, palette.impostorAccent, palette.timerAccent)
+        state.phase == LocalPhase.VOTING -> Triple(palette.impostorAccent, palette.cyanAccent, palette.directorAccent)
+        state.phase == LocalPhase.RESULTS -> {
+            val winAccent = if (state.crewWon) palette.normalGlow else palette.impostorGlow
+            Triple(winAccent, palette.cyanAccent, if (state.crewWon) palette.normalAccent else palette.impostorAccent)
+        }
+        else -> Triple(palette.cyanAccent, palette.normalAccent, palette.impostorAccent)
+    }
+
+    ImpostorAnimatedBackdrop(
+        primaryOrbColor = orbPrimary,
+        secondaryOrbColor = orbSecondary,
+        tertiaryOrbColor = orbTertiary
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -130,7 +186,13 @@ fun LocalGameScreen(
                 ) {
                     if (state.phase != LocalPhase.SETUP) {
                         IconButton(
-                            onClick = viewModel::returnToSetup,
+                            onClick = {
+                                if (isRoundInProgress) {
+                                    showConfirmExitDialog = true
+                                } else {
+                                    viewModel.returnToSetup()
+                                }
+                            },
                             modifier = Modifier
                                 .size(48.dp)
                                 .testTag("local_back_button")
@@ -184,32 +246,15 @@ fun LocalGameScreen(
                             tint = if (soundEnabled) palette.cyanAccent else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                    if (state.phase == LocalPhase.SETUP) {
-                        OutlinedButton(
-                            onClick = onOpenOnline,
-                            shape = RoundedCornerShape(50),
-                            border = BorderStroke(1.dp, palette.cyanAccent.copy(alpha = 0.75f)),
-                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
-                            modifier = Modifier
-                                .height(44.dp)
-                                .testTag("open_online_button")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.Public,
-                                contentDescription = "Online Multiplayer",
-                                tint = palette.cyanAccent,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "Online",
-                                style = MaterialTheme.typography.labelLarge,
-                                color = palette.cyanAccent
-                            )
-                        }
-                    } else {
+                    if (state.phase != LocalPhase.SETUP) {
                         TextButton(
-                            onClick = viewModel::returnToSetup,
+                            onClick = {
+                                if (isRoundInProgress) {
+                                    showConfirmExitDialog = true
+                                } else {
+                                    viewModel.returnToSetup()
+                                }
+                            },
                             modifier = Modifier.testTag("local_end_round_button")
                         ) {
                             Text("Setup", color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -326,15 +371,23 @@ fun LocalGameScreen(
             exit = fadeOut(animationSpec = tween(220))
         ) {
             val topVotes = state.roundVoteCounts.values.maxOrNull() ?: 0
-            val eliminatedPlayers = remember(state.roundNumber, state.roundVoteCounts, state.players, state.impostorIds) {
+            val eliminatedPlayers = remember(state.roundNumber, state.roundVoteCounts, state.players, state.impostorIds, state.ultimateKillerId, state.saviorAgentId, state.agentDirectorId) {
                 if (topVotes > 0) {
                     state.roundVoteCounts.filterValues { it == topVotes }.keys.mapNotNull { pid ->
                         state.players.firstOrNull { it.id == pid }?.let { player ->
+                            val isImp = player.id in state.impostorIds
+                            val identity = GameRoleIdentity.resolve(
+                                role = if (isImp) PlayerRole.IMPOSTOR else PlayerRole.NORMAL,
+                                isUltimateKiller = state.impostorAbilityEnabled && player.id == state.ultimateKillerId,
+                                isSavior = state.saviorAgentEnabled && player.id == state.saviorAgentId,
+                                isDirector = state.agentDirectorEnabled && player.id == state.agentDirectorId
+                            )
                             EliminatedPlayerReveal(
                                 id = player.id,
                                 name = player.name,
-                                isImpostor = player.id in state.impostorIds,
-                                voteCount = topVotes
+                                isImpostor = isImp,
+                                voteCount = topVotes,
+                                roleIdentity = identity
                             )
                         }
                     }
@@ -351,6 +404,29 @@ fun LocalGameScreen(
                     onDismiss = { dismissedEliminationRound = state.roundNumber }
                 )
             }
+        }
+
+        if (showConfirmExitDialog) {
+            AlertDialog(
+                onDismissRequest = { showConfirmExitDialog = false },
+                title = { Text("End Current Round?") },
+                text = { Text("Returning to setup will cancel the active round in progress.") },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            showConfirmExitDialog = false
+                            viewModel.returnToSetup()
+                        }
+                    ) {
+                        Text("End Round")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showConfirmExitDialog = false }) {
+                        Text("Keep Playing")
+                    }
+                }
+            )
         }
     }
 }
@@ -421,10 +497,39 @@ private fun LocalPlayingContent(
     onGoToVoting: () -> Unit
 ) {
     val palette = LocalImpostorPalette.current
+    val context = LocalContext.current
     val activeUid = state.turnOrderIds.getOrNull(state.currentTurnIndex)
     val activePlayer = state.players.firstOrNull { it.id == activeUid }
     var peekPlayer by remember { mutableStateOf<LocalPlayer?>(null) }
     var showGuessInput by remember { mutableStateOf(false) }
+    var lastBroadcast by remember { mutableStateOf<TurnExpiredBroadcast?>(null) }
+    var prevRemaining by remember(state.currentTurnIndex, state.roundNumber) {
+        mutableIntStateOf(state.remainingTurnSeconds)
+    }
+
+    LaunchedEffect(Unit) {
+        TurnTimerEventBus.events.collectLatest { event ->
+            lastBroadcast = event
+        }
+    }
+
+    LaunchedEffect(
+        state.remainingTurnSeconds,
+        state.isTimerPaused,
+        state.timerEnabled,
+        state.currentTurnIndex,
+        state.roundNumber
+    ) {
+        if (state.timerEnabled && !state.isTimerPaused && prevRemaining > 0 && state.remainingTurnSeconds == 0) {
+            TurnTimerEventBus.emitExpired(
+                context = context,
+                playerName = activePlayer?.name ?: "Discussion",
+                turnIndex = state.currentTurnIndex,
+                totalTurns = state.turnOrderIds.size
+            )
+        }
+        prevRemaining = state.remainingTurnSeconds
+    }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -433,17 +538,19 @@ private fun LocalPlayingContent(
     ) {
         item {
             if (state.timerEnabled) {
-                TurnTimerBar(
-                    activePlayerName = activePlayer?.name ?: "Discussion",
-                    turnIndex = state.currentTurnIndex,
-                    totalTurns = state.turnOrderIds.size,
-                    remainingSeconds = state.remainingTurnSeconds,
-                    totalSeconds = state.turnDurationSeconds,
-                    isPaused = state.isTimerPaused,
-                    showControls = true,
-                    onTogglePause = onTogglePause,
-                    onNextTurn = onNextTurn
-                )
+                androidx.compose.runtime.key(state.currentTurnIndex, state.roundNumber) {
+                    TurnTimerBar(
+                        activePlayerName = activePlayer?.name ?: "Discussion",
+                        turnIndex = state.currentTurnIndex,
+                        totalTurns = state.turnOrderIds.size,
+                        remainingSeconds = state.remainingTurnSeconds,
+                        totalSeconds = state.turnDurationSeconds,
+                        isPaused = state.isTimerPaused,
+                        showControls = true,
+                        onTogglePause = onTogglePause,
+                        onNextTurn = onNextTurn
+                    )
+                }
             } else {
                 Surface(
                     color = MaterialTheme.colorScheme.surfaceContainer,
@@ -472,6 +579,37 @@ private fun LocalPlayingContent(
                             text = "Turn ${state.currentTurnIndex + 1}/${state.turnOrderIds.size}",
                             style = MaterialTheme.typography.labelLarge,
                             color = palette.cyanAccent
+                        )
+                    }
+                }
+            }
+        }
+
+        if (lastBroadcast != null && state.timerEnabled && state.remainingTurnSeconds == 0 && !state.isTimerPaused) {
+            item {
+                val broadcast = lastBroadcast!!
+                Surface(
+                    color = palette.impostorSurface.copy(alpha = 0.90f),
+                    shape = RoundedCornerShape(14.dp),
+                    border = BorderStroke(1.dp, palette.impostorGlow),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.NotificationsActive,
+                            contentDescription = "Turn timer expired alert",
+                            tint = palette.impostorGlow,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Text(
+                            text = "Time's up for ${broadcast.playerName} (Turn ${broadcast.turnIndex + 1}/${broadcast.totalTurns}) — tap Next Turn or Finish Turns!",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = palette.impostorGlow,
+                            modifier = Modifier.weight(1f)
                         )
                     }
                 }
@@ -640,10 +778,16 @@ private fun LocalPlayingContent(
         }
     }
 
-    if (peekPlayer != null && state.activeWord != null) {
-        val target = peekPlayer!!
-        val wordEntry = state.activeWord!!
+    val target = peekPlayer
+    val wordEntry = state.activeWord
+    if (target != null && wordEntry != null) {
         val targetRole = roleForPlayer(target.id)
+        val targetIdentity = GameRoleIdentity.resolve(
+            role = targetRole,
+            isUltimateKiller = state.impostorAbilityEnabled && state.ultimateKillerId == target.id,
+            isSavior = state.saviorAgentEnabled && state.saviorAgentId == target.id,
+            isDirector = state.agentDirectorEnabled && state.agentDirectorId == target.id
+        )
         val otherPlayers = remember(state.players, target.id) {
             state.players.filter { it.id != target.id }.map { it.id to it.name }
         }
@@ -662,7 +806,8 @@ private fun LocalPlayingContent(
                         secretWord = wordEntry.word,
                         hint = state.activeHint,
                         showCategoryAndGenre = state.categoryCluesEnabled,
-                        showHint = state.hintsEnabled
+                        showHint = state.hintsEnabled,
+                        roleIdentity = targetIdentity
                     )
                     if (state.impostorAbilityEnabled && targetRole == PlayerRole.IMPOSTOR) {
                         if (state.ultimateKillerId == target.id) {
@@ -936,22 +1081,41 @@ private fun LocalResultsContent(
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         item {
-            val accent = if (state.crewWon) palette.normalAccent else palette.impostorAccent
-            val bg = if (state.crewWon) palette.normalSurface else palette.impostorSurface
+            val winnerIdentity = if (state.crewWon) GameRoleIdentity.AGENT else GameRoleIdentity.IMPOSTOR
+            val winnerStyle = winnerIdentity.style(palette)
             Surface(
-                color = bg,
+                color = winnerStyle.deepSurface,
                 shape = RoundedCornerShape(24.dp),
-                border = BorderStroke(2.dp, accent),
-                modifier = Modifier.fillMaxWidth()
+                border = BorderStroke(2.dp, winnerStyle.glow.copy(alpha = 0.85f)),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .drawBehind {
+                        val spread = 12.dp.toPx()
+                        drawRoundRect(
+                            brush = Brush.radialGradient(
+                                colors = listOf(winnerStyle.glow.copy(alpha = 0.25f), Color.Transparent),
+                                radius = maxOf(size.width, size.height) * 0.72f
+                            ),
+                            cornerRadius = CornerRadius(28.dp.toPx(), 28.dp.toPx()),
+                            size = size.copy(width = size.width + spread, height = size.height + spread),
+                            topLeft = Offset(-spread / 2f, -spread / 2f)
+                        )
+                    }
             ) {
                 Column(
                     modifier = Modifier.padding(22.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
+                    RoleEmblemBadge(
+                        identity = winnerIdentity,
+                        size = 58.dp,
+                        animated = true
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
                     Text(
                         text = if (state.crewWon) "AGENTS WIN!" else "IMPOSTORS WIN!",
                         style = MaterialTheme.typography.displayMedium,
-                        color = accent,
+                        color = winnerStyle.glow,
                         textAlign = TextAlign.Center
                     )
                     Spacer(modifier = Modifier.height(8.dp))
@@ -985,15 +1149,16 @@ private fun LocalResultsContent(
 
         if (state.impostorAbilityEnabled && state.ultimateKillerId != null) {
             item {
+                val killerStyle = GameRoleIdentity.AGENT_KILLER.style(palette)
                 val killerName = nameMap[state.ultimateKillerId] ?: "Impostor"
                 val targetedId = state.rawKillerTargetId ?: state.nullifiedVoterId
                 val targetedName = targetedId?.let { nameMap[it] }
                 val targetedVotedImpostor = targetedId?.let { state.votesByPlayerId[it] } in state.impostorIds
 
                 Surface(
-                    color = palette.impostorSurface.copy(alpha = 0.78f),
+                    color = killerStyle.deepSurface.copy(alpha = 0.88f),
                     shape = RoundedCornerShape(18.dp),
-                    border = BorderStroke(1.dp, palette.impostorAccent),
+                    border = BorderStroke(1.dp, killerStyle.glow.copy(alpha = 0.8f)),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
@@ -1001,17 +1166,16 @@ private fun LocalResultsContent(
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            imageVector = Icons.Filled.GpsFixed,
-                            contentDescription = null,
-                            tint = palette.impostorGlow,
-                            modifier = Modifier.size(24.dp)
+                        RoleEmblemBadge(
+                            identity = GameRoleIdentity.AGENT_KILLER,
+                            size = 38.dp,
+                            animated = true
                         )
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text(
                                 text = "ULTIMATE AGENT KILLER: $killerName",
                                 style = MaterialTheme.typography.labelLarge,
-                                color = palette.impostorGlow
+                                color = killerStyle.glow
                             )
                             Text(
                                 text = when {
@@ -1031,13 +1195,14 @@ private fun LocalResultsContent(
 
         if (state.saviorAgentEnabled && state.saviorAgentId != null) {
             item {
+                val saviorStyle = GameRoleIdentity.SAVIOR_AGENT.style(palette)
                 val saviorName = nameMap[state.saviorAgentId] ?: "Savior"
                 val protectedName = state.protectedPlayerId?.let { nameMap[it] }
 
                 Surface(
-                    color = palette.normalSurface.copy(alpha = 0.78f),
+                    color = saviorStyle.deepSurface.copy(alpha = 0.88f),
                     shape = RoundedCornerShape(18.dp),
-                    border = BorderStroke(1.dp, palette.normalAccent),
+                    border = BorderStroke(1.dp, saviorStyle.glow.copy(alpha = 0.8f)),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
@@ -1045,17 +1210,16 @@ private fun LocalResultsContent(
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            imageVector = Icons.Filled.Shield,
-                            contentDescription = null,
-                            tint = palette.normalGlow,
-                            modifier = Modifier.size(24.dp)
+                        RoleEmblemBadge(
+                            identity = GameRoleIdentity.SAVIOR_AGENT,
+                            size = 38.dp,
+                            animated = true
                         )
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text(
                                 text = "SAVIOR AGENT: $saviorName",
                                 style = MaterialTheme.typography.labelLarge,
-                                color = palette.normalGlow
+                                color = saviorStyle.glow
                             )
                             Text(
                                 text = when {
@@ -1074,13 +1238,14 @@ private fun LocalResultsContent(
 
         if (state.agentDirectorEnabled && state.agentDirectorId != null) {
             item {
+                val directorStyle = GameRoleIdentity.AGENT_DIRECTOR.style(palette)
                 val directorName = nameMap[state.agentDirectorId] ?: "Director"
                 val directorVoided = state.agentDirectorId == state.nullifiedVoterId
 
                 Surface(
-                    color = palette.timerSurface.copy(alpha = 0.78f),
+                    color = directorStyle.deepSurface.copy(alpha = 0.88f),
                     shape = RoundedCornerShape(18.dp),
-                    border = BorderStroke(1.dp, palette.timerAccent),
+                    border = BorderStroke(1.dp, directorStyle.glow.copy(alpha = 0.8f)),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
@@ -1088,17 +1253,16 @@ private fun LocalResultsContent(
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            imageVector = Icons.Filled.HowToVote,
-                            contentDescription = null,
-                            tint = palette.timerAccent,
-                            modifier = Modifier.size(24.dp)
+                        RoleEmblemBadge(
+                            identity = GameRoleIdentity.AGENT_DIRECTOR,
+                            size = 38.dp,
+                            animated = true
                         )
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text(
                                 text = "AGENT DIRECTOR: $directorName",
                                 style = MaterialTheme.typography.labelLarge,
-                                color = palette.timerAccent
+                                color = directorStyle.glow
                             )
                             Text(
                                 text = if (directorVoided) {
@@ -1119,10 +1283,16 @@ private fun LocalResultsContent(
             SectionCard(title = "THE IMPOSTOR${if (impostorPlayers.size > 1) "S" else ""} WERE") {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     impostorPlayers.forEach { imp ->
+                        val impIdentity = if (state.impostorAbilityEnabled && imp.id == state.ultimateKillerId) {
+                            GameRoleIdentity.AGENT_KILLER
+                        } else {
+                            GameRoleIdentity.IMPOSTOR
+                        }
+                        val impStyle = impIdentity.style(palette)
                         Surface(
-                            color = palette.impostorSurface,
+                            color = impStyle.deepSurface,
                             shape = RoundedCornerShape(12.dp),
-                            border = BorderStroke(1.dp, palette.impostorAccent),
+                            border = BorderStroke(1.dp, impStyle.glow.copy(alpha = 0.8f)),
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Row(
@@ -1130,16 +1300,27 @@ private fun LocalResultsContent(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(
-                                    text = if (imp.id == state.ultimateKillerId) "${imp.name} (Agent Killer)" else imp.name,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = palette.impostorGlow
-                                )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    RoleEmblemBadge(
+                                        identity = impIdentity,
+                                        size = 34.dp,
+                                        animated = true
+                                    )
+                                    Text(
+                                        text = if (impIdentity == GameRoleIdentity.AGENT_KILLER) "${imp.name} (Agent Killer)" else imp.name,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        color = impStyle.glow
+                                    )
+                                }
                                 val votesAgainst = state.roundVoteCounts[imp.id] ?: 0
                                 Text(
                                     text = "$votesAgainst counted vote${if (votesAgainst == 1) "" else "s"}",
                                     style = MaterialTheme.typography.labelMedium,
-                                    color = palette.impostorGlow
+                                    color = impStyle.glow
                                 )
                             }
                         }
@@ -1160,8 +1341,16 @@ private fun LocalResultsContent(
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     state.players.sortedByDescending { it.score }.forEach { player ->
                         val isImp = player.id in state.impostorIds
+                        val isKiller = state.impostorAbilityEnabled && player.id == state.ultimateKillerId
                         val isSavior = state.saviorAgentEnabled && player.id == state.saviorAgentId
                         val isDirector = state.agentDirectorEnabled && player.id == state.agentDirectorId
+                        val playerIdentity = GameRoleIdentity.resolve(
+                            role = if (isImp) PlayerRole.IMPOSTOR else PlayerRole.NORMAL,
+                            isUltimateKiller = isKiller,
+                            isSavior = isSavior,
+                            isDirector = isDirector
+                        )
+                        val playerStyle = playerIdentity.style(palette)
                         val delta = state.roundDeltas[player.id] ?: 0
                         val deltaText = if (delta >= 0) "+$delta" else "$delta"
                         val deltaColor = when {
@@ -1177,88 +1366,97 @@ private fun LocalResultsContent(
                         val predictedName = predictedId?.let { nameMap[it] }
 
                         val roleTag = buildList {
-                            if (isImp) add(if (player.id == state.ultimateKillerId) "AGENT KILLER" else "IMPOSTOR")
+                            if (isImp) add(if (isKiller) "AGENT KILLER" else "IMPOSTOR")
                             if (isSavior) add("SAVIOR")
                             if (isDirector) add("DIRECTOR")
                         }.joinToString(" • ")
 
-                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            RoleEmblemBadge(
+                                identity = playerIdentity,
+                                size = 32.dp,
+                                animated = true
+                            )
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(2.dp)
                             ) {
-                                Text(
-                                    text = if (roleTag.isNotEmpty()) "${player.name} ($roleTag)" else player.name,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = when {
-                                        isImp -> palette.impostorGlow
-                                        isSavior -> palette.normalGlow
-                                        isDirector -> palette.timerAccent
-                                        else -> MaterialTheme.colorScheme.onSurface
-                                    },
-                                    modifier = Modifier.weight(1f)
-                                )
                                 Row(
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(
-                                        text = "($deltaText)",
-                                        style = MaterialTheme.typography.labelLarge,
-                                        color = deltaColor
-                                    )
-                                    Text(
-                                        text = "${player.score} pts",
+                                        text = if (roleTag.isNotEmpty()) "${player.name} ($roleTag)" else player.name,
                                         style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (player.score < 0) palette.impostorGlow else palette.timerAccent
+                                        color = playerStyle.glow,
+                                        modifier = Modifier.weight(1f)
                                     )
-                                }
-                            }
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                if (isVoided) {
-                                    Icon(
-                                        imageVector = Icons.Filled.Block,
-                                        contentDescription = "Vote voided",
-                                        tint = palette.impostorGlow,
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                } else if (isProtected) {
-                                    Icon(
-                                        imageVector = Icons.Filled.Shield,
-                                        contentDescription = "Shielded by Savior",
-                                        tint = palette.normalGlow,
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                }
-                                Text(
-                                    text = buildString {
-                                        append("Voted: $votedForName")
-                                        if (isDirector && !isVoided && votedForId != null) append(" [2x]")
-                                        if (isProtected) {
-                                            append(if (state.saviorSavedTarget) " [SAVED]" else " [SHIELDED]")
-                                        }
-                                        if (isVoided) append(" [VOIDED]")
-                                        if (!isImp && state.agentPredictionEnabled) {
-                                            if (predictedName != null) {
-                                                val hit = predictedId in state.impostorIds
-                                                append(" • Predicted: $predictedName (${if (hit) "+1" else "-2"})")
-                                            } else {
-                                                append(" • Prediction: Skipped")
-                                            }
-                                        }
-                                    },
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = when {
-                                        isVoided -> palette.impostorGlow
-                                        isProtected && state.saviorSavedTarget -> palette.normalGlow
-                                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "($deltaText)",
+                                            style = MaterialTheme.typography.labelLarge,
+                                            color = deltaColor
+                                        )
+                                        Text(
+                                            text = "${player.score} pts",
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (player.score < 0) palette.impostorGlow else palette.timerAccent
+                                        )
                                     }
-                                )
+                                }
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    if (isVoided) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Block,
+                                            contentDescription = "Vote voided",
+                                            tint = palette.impostorGlow,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                    } else if (isProtected) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Shield,
+                                            contentDescription = "Shielded by Savior",
+                                            tint = palette.saviorGlow,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                    }
+                                    Text(
+                                        text = buildString {
+                                            append("Voted: $votedForName")
+                                            if (isDirector && !isVoided && votedForId != null) append(" [2x]")
+                                            if (isProtected) {
+                                                append(if (state.saviorSavedTarget) " [SAVED]" else " [SHIELDED]")
+                                            }
+                                            if (isVoided) append(" [VOIDED]")
+                                            if (!isImp && state.agentPredictionEnabled) {
+                                                if (predictedName != null) {
+                                                    val hit = predictedId in state.impostorIds
+                                                    append(" • Predicted: $predictedName (${if (hit) "+1" else "-2"})")
+                                                } else {
+                                                    append(" • Prediction: Skipped")
+                                                }
+                                            }
+                                        },
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = when {
+                                            isVoided -> palette.impostorGlow
+                                            isProtected && state.saviorSavedTarget -> palette.saviorGlow
+                                            else -> MaterialTheme.colorScheme.onSurfaceVariant
+                                        }
+                                    )
+                                }
                             }
                         }
                     }

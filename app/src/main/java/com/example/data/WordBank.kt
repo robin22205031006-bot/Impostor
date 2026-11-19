@@ -1,6 +1,7 @@
 package com.example.data
 
 import android.content.Context
+import androidx.core.content.edit
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -280,11 +281,10 @@ object WordBank {
                     }
                 )
             }
-            context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-                .edit()
-                .putString(KEY_CUSTOM_CATEGORY_NAME, categoryName)
-                .putString(KEY_CUSTOM_WORDS, array.toString())
-                .apply()
+            context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit {
+                putString(KEY_CUSTOM_CATEGORY_NAME, categoryName)
+                putString(KEY_CUSTOM_WORDS, array.toString())
+            }
         }
     }
 

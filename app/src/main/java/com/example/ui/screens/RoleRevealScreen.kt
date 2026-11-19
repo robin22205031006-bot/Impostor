@@ -2,6 +2,7 @@ package com.example.ui.screens
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
@@ -15,6 +16,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
@@ -54,7 +56,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
@@ -64,11 +70,13 @@ import com.example.audio.SoundCuePlayer
 import com.example.data.PlayerRole
 import com.example.ui.components.AgentDirectorBadge
 import com.example.ui.components.AgentPredictionCard
+import com.example.ui.components.GameRoleIdentity
 import com.example.ui.components.OtherImpostorAllyNote
 import com.example.ui.components.RoleWordCard
 import com.example.ui.components.SaviorAbilityCard
 import com.example.ui.components.TurnTimerBar
 import com.example.ui.components.UltimateKillerAbilityCard
+import com.example.ui.components.style
 import com.example.ui.theme.LocalImpostorPalette
 
 @Composable
@@ -106,6 +114,18 @@ fun RoleRevealScreen(
 ) {
     val palette = LocalImpostorPalette.current
     val isLastPlayer = playerIndex >= totalPlayers - 1
+    val roleIdentity = GameRoleIdentity.resolve(
+        role = role,
+        isUltimateKiller = impostorAbilityEnabled && isUltimateKiller,
+        isSavior = saviorAgentEnabled && isSavior,
+        isDirector = agentDirectorEnabled && isDirector
+    )
+    val roleStyle = roleIdentity.style(palette)
+    val buttonAccent by animateColorAsState(
+        targetValue = if (isRevealed) roleStyle.accent else palette.cyanAccent,
+        animationSpec = tween(360),
+        label = "reveal_cta_accent"
+    )
 
     LaunchedEffect(isRevealed, role) {
         if (isRevealed) {
@@ -184,7 +204,7 @@ fun RoleRevealScreen(
                             .clip(CircleShape)
                             .background(
                                 when {
-                                    isCurrent -> palette.cyanAccent
+                                    isCurrent -> if (isRevealed) roleStyle.glow else palette.cyanAccent
                                     isDone -> palette.normalAccent.copy(alpha = 0.7f)
                                     else -> MaterialTheme.colorScheme.outlineVariant
                                 }
@@ -197,8 +217,18 @@ fun RoleRevealScreen(
             AnimatedContent(
                 targetState = isRevealed,
                 transitionSpec = {
-                    (fadeIn(animationSpec = tween(220)) + scaleIn(initialScale = 0.96f, animationSpec = tween(220)))
-                        .togetherWith(fadeOut(animationSpec = tween(160)))
+                    (fadeIn(animationSpec = tween(260)) +
+                        scaleIn(
+                            initialScale = 0.90f,
+                            animationSpec = spring(
+                                dampingRatio = Spring.DampingRatioLowBouncy,
+                                stiffness = Spring.StiffnessMediumLow
+                            )
+                        ))
+                        .togetherWith(
+                            fadeOut(animationSpec = tween(160)) +
+                                scaleOut(targetScale = 0.94f, animationSpec = tween(160))
+                        )
                         .using(SizeTransform(clip = false))
                 },
                 label = "role_reveal_overlay_transition"
@@ -217,7 +247,8 @@ fun RoleRevealScreen(
                             secretWord = secretWord,
                             hint = hint,
                             showCategoryAndGenre = showCategoryAndGenre,
-                            showHint = showHint
+                            showHint = showHint,
+                            roleIdentity = roleIdentity
                         )
                         if (impostorAbilityEnabled && role == PlayerRole.IMPOSTOR) {
                             if (isUltimateKiller) {
@@ -257,13 +288,25 @@ fun RoleRevealScreen(
                 onClick = onHideAndNext,
                 shape = RoundedCornerShape(16.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = palette.cyanAccent,
-                    contentColor = MaterialTheme.colorScheme.onPrimary
+                    containerColor = buttonAccent,
+                    contentColor = if (role == PlayerRole.IMPOSTOR) Color.White else MaterialTheme.colorScheme.onPrimary
                 ),
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = 20.dp)
                     .height(56.dp)
+                    .drawBehind {
+                        val spread = 10.dp.toPx()
+                        drawRoundRect(
+                            brush = Brush.radialGradient(
+                                colors = listOf(roleStyle.glow.copy(alpha = 0.28f), Color.Transparent),
+                                radius = maxOf(size.width, size.height) * 0.72f
+                            ),
+                            cornerRadius = CornerRadius(20.dp.toPx(), 20.dp.toPx()),
+                            size = size.copy(width = size.width + spread, height = size.height + spread),
+                            topLeft = Offset(-spread / 2f, -spread / 2f)
+                        )
+                    }
                     .testTag("local_hide_and_pass_button")
             ) {
                 Icon(
@@ -320,8 +363,11 @@ private fun TapToRevealOverlayCard(
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
     val pressScale by animateFloatAsState(
-        targetValue = if (isPressed) 0.97f else 1.0f,
-        animationSpec = spring(stiffness = Spring.StiffnessMedium),
+        targetValue = if (isPressed) 0.965f else 1.0f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMedium
+        ),
         label = "tap_card_press"
     )
 
@@ -352,6 +398,18 @@ private fun TapToRevealOverlayCard(
             .graphicsLayer {
                 scaleX = pressScale
                 scaleY = pressScale
+            }
+            .drawBehind {
+                val spread = 14.dp.toPx()
+                drawRoundRect(
+                    brush = Brush.radialGradient(
+                        colors = listOf(palette.cyanAccent.copy(alpha = 0.22f * borderAlpha), Color.Transparent),
+                        radius = maxOf(size.width, size.height) * 0.72f
+                    ),
+                    cornerRadius = CornerRadius(32.dp.toPx(), 32.dp.toPx()),
+                    size = size.copy(width = size.width + spread, height = size.height + spread),
+                    topLeft = Offset(-spread / 2f, -spread / 2f)
+                )
             }
             .clip(RoundedCornerShape(28.dp))
             .background(

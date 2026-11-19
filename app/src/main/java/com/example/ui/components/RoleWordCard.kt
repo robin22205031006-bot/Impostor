@@ -1,5 +1,6 @@
 package com.example.ui.components
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -22,8 +23,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Lightbulb
-import androidx.compose.material.icons.filled.Security
-import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -58,6 +57,11 @@ fun RoleWordCard(
     hint: String,
     showCategoryAndGenre: Boolean = true,
     showHint: Boolean = true,
+    roleIdentity: GameRoleIdentity = if (role == PlayerRole.IMPOSTOR) {
+        GameRoleIdentity.IMPOSTOR
+    } else {
+        GameRoleIdentity.AGENT
+    },
     modifier: Modifier = Modifier
 ) {
     val palette = LocalImpostorPalette.current
@@ -65,44 +69,61 @@ fun RoleWordCard(
     val hasCategory = showCategoryAndGenre && (category.isNotBlank() || genre.isNotBlank())
     val hasHint = showHint && hint.isNotBlank()
 
-    val accent = if (isImpostor) palette.impostorAccent else palette.normalAccent
-    val glow = if (isImpostor) palette.impostorGlow else palette.normalGlow
-    val surfaceBg = if (isImpostor) palette.impostorSurface else palette.normalSurface
-    val borderColor = if (isImpostor) palette.impostorBorder else palette.normalBorder
+    val targetStyle = roleIdentity.style(palette)
+    val accent by animateColorAsState(
+        targetValue = targetStyle.accent,
+        animationSpec = tween(durationMillis = 420),
+        label = "role_card_accent"
+    )
+    val glow by animateColorAsState(
+        targetValue = targetStyle.glow,
+        animationSpec = tween(durationMillis = 420),
+        label = "role_card_glow"
+    )
+    val surfaceBg by animateColorAsState(
+        targetValue = targetStyle.deepSurface,
+        animationSpec = tween(durationMillis = 420),
+        label = "role_card_surface"
+    )
+    val borderColor by animateColorAsState(
+        targetValue = targetStyle.border,
+        animationSpec = tween(durationMillis = 420),
+        label = "role_card_border"
+    )
 
     val pulseTransition = rememberInfiniteTransition(label = "role_glow")
     val glowAlpha by pulseTransition.animateFloat(
-        initialValue = 0.24f,
-        targetValue = 0.68f,
+        initialValue = 0.28f,
+        targetValue = 0.72f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1600, easing = FastOutSlowInEasing),
+            animation = tween(durationMillis = 1500, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
         ),
         label = "glow_alpha"
     )
     val glowSpreadDp by pulseTransition.animateFloat(
-        initialValue = 10f,
-        targetValue = 26f,
+        initialValue = 12f,
+        targetValue = 28f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1600, easing = FastOutSlowInEasing),
+            animation = tween(durationMillis = 1500, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
         ),
         label = "glow_spread"
     )
     val borderPulseAlpha by pulseTransition.animateFloat(
-        initialValue = 0.58f,
+        initialValue = 0.62f,
         targetValue = 1.0f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1600, easing = FastOutSlowInEasing),
+            animation = tween(durationMillis = 1500, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
         ),
         label = "border_pulse_alpha"
     )
     val cardScale by pulseTransition.animateFloat(
         initialValue = 1.0f,
-        targetValue = 1.015f,
+        targetValue = 1.014f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1600, easing = FastOutSlowInEasing),
+            animation = tween(durationMillis = 1500, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
         ),
         label = "card_scale"
@@ -111,7 +132,7 @@ fun RoleWordCard(
         initialValue = -0.35f,
         targetValue = 1.35f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 3200, easing = FastOutSlowInEasing),
+            animation = tween(durationMillis = 3000, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Restart
         ),
         label = "sheen_offset"
@@ -123,7 +144,7 @@ fun RoleWordCard(
             .testTag(if (isImpostor) "role_card_impostor" else "role_card_normal"),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Main Glowing Word Box (Red pulsing glow for Impostor, Green pulsing glow for Normal)
+        // Main Role-Themed Glowing Word Box with unique Emblem per Role
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -140,7 +161,7 @@ fun RoleWordCard(
                                 accent.copy(alpha = glowAlpha * 0.48f),
                                 Color.Transparent
                             ),
-                            radius = maxOf(size.width, size.height) * 0.72f
+                            radius = maxOf(size.width, size.height) * 0.74f
                         ),
                         cornerRadius = CornerRadius(28.dp.toPx(), 28.dp.toPx()),
                         size = size.copy(
@@ -162,7 +183,7 @@ fun RoleWordCard(
                 .background(
                     Brush.radialGradient(
                         colors = listOf(
-                            glow.copy(alpha = glowAlpha * 0.22f),
+                            glow.copy(alpha = glowAlpha * 0.24f),
                             Color.Transparent
                         )
                     )
@@ -173,7 +194,7 @@ fun RoleWordCard(
                         brush = Brush.linearGradient(
                             colors = listOf(
                                 Color.Transparent,
-                                glow.copy(alpha = 0.08f),
+                                glow.copy(alpha = 0.09f),
                                 Color.Transparent
                             ),
                             start = Offset(sweepX - size.width * 0.3f, 0f),
@@ -198,14 +219,13 @@ fun RoleWordCard(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // Upper side of the box: 'Category' label defining the subject of the word shown
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = if (hasCategory) Arrangement.SpaceBetween else Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     if (hasCategory) {
-                        Column {
+                        Column(modifier = Modifier.weight(1f, fill = false)) {
                             Text(
                                 text = stringResource(R.string.category_label),
                                 style = MaterialTheme.typography.labelSmall,
@@ -217,53 +237,52 @@ fun RoleWordCard(
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                         }
+                        Spacer(modifier = Modifier.width(8.dp))
                     }
 
-                    Surface(
-                        color = accent.copy(alpha = 0.14f + (glowAlpha * 0.12f)),
-                        shape = RoundedCornerShape(50),
-                        border = BorderStroke(1.dp, glow.copy(alpha = borderPulseAlpha * 0.85f))
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            PulsingStatusDot(color = glow)
-                            Icon(
-                                imageVector = if (isImpostor) Icons.Filled.VisibilityOff else Icons.Filled.Security,
-                                contentDescription = if (isImpostor) "Impostor Role" else "Agent Role",
-                                tint = glow,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Text(
-                                text = stringResource(
-                                    if (isImpostor) R.string.impostor_badge else R.string.crew_badge
-                                ),
-                                style = MaterialTheme.typography.labelMedium,
-                                color = glow
-                            )
-                        }
-                    }
+                    RoleEmblemChip(
+                        identity = roleIdentity,
+                        badgeSize = 24.dp,
+                        labelOverride = roleIdentity.displayTitle
+                    )
                 }
 
-                Spacer(modifier = Modifier.height(20.dp))
-                HorizontalDivider(color = accent.copy(alpha = 0.25f))
-                Spacer(modifier = Modifier.height(24.dp))
+                Spacer(modifier = Modifier.height(18.dp))
+                HorizontalDivider(color = accent.copy(alpha = 0.28f))
+                Spacer(modifier = Modifier.height(18.dp))
+
+                // Prominent Animated Role Emblem Medallion
+                RoleEmblemBadge(
+                    identity = roleIdentity,
+                    size = 64.dp,
+                    animated = true
+                )
+
+                Spacer(modifier = Modifier.height(14.dp))
 
                 if (isImpostor) {
                     Text(
-                        text = "YOU ARE THE IMPOSTOR",
+                        text = if (roleIdentity == GameRoleIdentity.AGENT_KILLER) {
+                            "YOU ARE THE AGENT KILLER"
+                        } else {
+                            "YOU ARE THE IMPOSTOR"
+                        },
                         style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.ExtraBold,
                         color = glow,
                         textAlign = TextAlign.Center
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = if (hasHint) {
-                            "No word revealed. Use the clue below to blend in or guess the term!"
-                        } else {
-                            "No word or hint revealed. Listen closely to blend in!"
+                        text = when {
+                            roleIdentity == GameRoleIdentity.AGENT_KILLER && hasHint ->
+                                "No word revealed. Use your clue to blend in — and void one player's vote below!"
+                            roleIdentity == GameRoleIdentity.AGENT_KILLER ->
+                                "No word or hint revealed. Listen closely to blend in — and silence one player's vote below!"
+                            hasHint ->
+                                "No word revealed. Use the clue below to blend in or guess the term!"
+                            else ->
+                                "No word or hint revealed. Listen closely to blend in!"
                         },
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -271,9 +290,15 @@ fun RoleWordCard(
                     )
                 } else {
                     Text(
-                        text = "SECRET WORD",
+                        text = when (roleIdentity) {
+                            GameRoleIdentity.SAVIOR_AGENT -> "SAVIOR AGENT • SECRET WORD"
+                            GameRoleIdentity.AGENT_DIRECTOR -> "AGENT DIRECTOR • SECRET WORD"
+                            else -> "SECRET WORD"
+                        },
                         style = MaterialTheme.typography.labelSmall,
-                        color = glow.copy(alpha = 0.85f)
+                        fontWeight = FontWeight.Bold,
+                        color = glow.copy(alpha = 0.9f),
+                        textAlign = TextAlign.Center
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
@@ -286,11 +311,10 @@ fun RoleWordCard(
                 }
 
                 if (hasCategory) {
-                    Spacer(modifier = Modifier.height(24.dp))
+                    Spacer(modifier = Modifier.height(22.dp))
                     HorizontalDivider(color = accent.copy(alpha = 0.25f))
                     Spacer(modifier = Modifier.height(14.dp))
 
-                    // Down the word box: Name of the genre of the word
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.Center
@@ -309,12 +333,12 @@ fun RoleWordCard(
                         )
                     }
                 } else {
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
                 }
             }
         }
 
-        // Glowing Hint Box (Red pulsing glow for Impostor, Green pulsing glow for Normal)
+        // Glowing Hint Box tinted to the exact Role Color
         if (hasHint) {
             Box(
                 modifier = Modifier
@@ -368,7 +392,13 @@ fun RoleWordCard(
                     Spacer(modifier = Modifier.width(14.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = if (isImpostor) "IMPOSTOR HINT" else "CREW HINT",
+                            text = when (roleIdentity) {
+                                GameRoleIdentity.AGENT_KILLER -> "AGENT KILLER HINT"
+                                GameRoleIdentity.IMPOSTOR -> "IMPOSTOR HINT"
+                                GameRoleIdentity.SAVIOR_AGENT -> "SAVIOR HINT"
+                                GameRoleIdentity.AGENT_DIRECTOR -> "DIRECTOR HINT"
+                                GameRoleIdentity.AGENT -> "AGENT HINT"
+                            },
                             style = MaterialTheme.typography.labelSmall,
                             color = glow
                         )

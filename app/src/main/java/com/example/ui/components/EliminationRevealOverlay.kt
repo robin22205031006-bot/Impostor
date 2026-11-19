@@ -27,7 +27,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -40,9 +39,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.GppBad
 import androidx.compose.material.icons.filled.HowToVote
-import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -75,7 +72,8 @@ data class EliminatedPlayerReveal(
     val id: String,
     val name: String,
     val isImpostor: Boolean,
-    val voteCount: Int
+    val voteCount: Int,
+    val roleIdentity: GameRoleIdentity = if (isImpostor) GameRoleIdentity.IMPOSTOR else GameRoleIdentity.AGENT
 )
 
 @Composable
@@ -110,24 +108,27 @@ fun EliminationRevealOverlay(
 
     val singleTarget = eliminatedPlayers.singleOrNull()
     val hasEliminatedImpostor = eliminatedPlayers.any { it.isImpostor }
+    val primaryIdentity = when {
+        singleTarget != null -> singleTarget.roleIdentity
+        hasEliminatedImpostor -> eliminatedPlayers.first { it.isImpostor }.roleIdentity
+        else -> GameRoleIdentity.AGENT
+    }
+    val primaryStyle = primaryIdentity.style(palette)
 
     val verdictAccent = when {
         !roleRevealed -> palette.cyanAccent
         eliminatedPlayers.isEmpty() -> palette.timerAccent
-        singleTarget?.isImpostor == true || hasEliminatedImpostor -> palette.impostorAccent
-        else -> palette.normalAccent
+        else -> primaryStyle.accent
     }
     val verdictGlow = when {
         !roleRevealed -> palette.cyanAccent
         eliminatedPlayers.isEmpty() -> palette.timerAccent
-        singleTarget?.isImpostor == true || hasEliminatedImpostor -> palette.impostorGlow
-        else -> palette.normalGlow
+        else -> primaryStyle.glow
     }
     val verdictSurface = when {
         !roleRevealed -> palette.cyanSurface
         eliminatedPlayers.isEmpty() -> palette.timerSurface
-        singleTarget?.isImpostor == true || hasEliminatedImpostor -> palette.impostorSurface
-        else -> palette.normalSurface
+        else -> primaryStyle.deepSurface
     }
 
     val animatedAccent by animateColorAsState(
@@ -188,7 +189,6 @@ fun EliminationRevealOverlay(
             .testTag("elimination_reveal_overlay"),
         contentAlignment = Alignment.Center
     ) {
-        // Subtle radial aura behind the reveal card
         Canvas(modifier = Modifier.fillMaxSize()) {
             val maxR = size.minDimension * 0.44f
             drawCircle(
@@ -239,24 +239,36 @@ fun EliminationRevealOverlay(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        Surface(
-                            color = animatedAccent.copy(alpha = 0.16f),
-                            shape = CircleShape,
-                            border = BorderStroke(1.5.dp, animatedAccent.copy(alpha = 0.8f))
-                        ) {
-                            Icon(
-                                imageVector = when {
-                                    !roleRevealed -> Icons.Filled.HowToVote
-                                    eliminatedPlayers.isEmpty() -> Icons.Filled.HowToVote
-                                    singleTarget?.isImpostor == true || hasEliminatedImpostor -> Icons.Filled.GppBad
-                                    else -> Icons.Filled.VerifiedUser
-                                },
-                                contentDescription = "Elimination verdict icon",
-                                tint = animatedGlow,
-                                modifier = Modifier
-                                    .padding(16.dp)
-                                    .size(38.dp)
-                            )
+                        AnimatedContent(
+                            targetState = roleRevealed && eliminatedPlayers.isNotEmpty(),
+                            transitionSpec = {
+                                (fadeIn(tween(260)) + scaleIn(initialScale = 0.78f, animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy)))
+                                    .togetherWith(fadeOut(tween(140)))
+                            },
+                            label = "elimination_emblem_swap"
+                        ) { showEmblem ->
+                            if (showEmblem) {
+                                RoleEmblemBadge(
+                                    identity = primaryIdentity,
+                                    size = 76.dp,
+                                    animated = true
+                                )
+                            } else {
+                                Surface(
+                                    color = animatedAccent.copy(alpha = 0.16f),
+                                    shape = CircleShape,
+                                    border = BorderStroke(1.5.dp, animatedAccent.copy(alpha = 0.8f))
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.HowToVote,
+                                        contentDescription = "Elimination verdict icon",
+                                        tint = animatedGlow,
+                                        modifier = Modifier
+                                            .padding(16.dp)
+                                            .size(38.dp)
+                                    )
+                                }
+                            }
                         }
 
                         Text(
@@ -310,20 +322,13 @@ fun EliminationRevealOverlay(
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 eliminatedPlayers.forEach { target ->
+                                    val targetStyle = target.roleIdentity.style(palette)
                                     Surface(
-                                        color = if (roleRevealed && target.isImpostor) {
-                                            palette.impostorSurface
-                                        } else if (roleRevealed) {
-                                            palette.normalSurface
-                                        } else {
-                                            MaterialTheme.colorScheme.surfaceContainerHigh
-                                        },
+                                        color = if (roleRevealed) targetStyle.deepSurface else MaterialTheme.colorScheme.surfaceContainerHigh,
                                         shape = RoundedCornerShape(14.dp),
                                         border = BorderStroke(
                                             1.dp,
-                                            if (!roleRevealed) palette.cyanAccent.copy(alpha = 0.6f)
-                                            else if (target.isImpostor) palette.impostorAccent
-                                            else palette.normalAccent
+                                            if (!roleRevealed) palette.cyanAccent.copy(alpha = 0.6f) else targetStyle.accent
                                         ),
                                         modifier = Modifier.fillMaxWidth()
                                     ) {
@@ -332,20 +337,29 @@ fun EliminationRevealOverlay(
                                             horizontalArrangement = Arrangement.SpaceBetween,
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                modifier = Modifier.weight(1f)
+                                            ) {
+                                                if (roleRevealed) {
+                                                    RoleEmblemBadge(
+                                                        identity = target.roleIdentity,
+                                                        size = 28.dp,
+                                                        animated = true
+                                                    )
+                                                }
+                                                Text(
+                                                    text = "${target.name} (${target.voteCount} votes)",
+                                                    style = MaterialTheme.typography.titleMedium,
+                                                    color = MaterialTheme.colorScheme.onSurface
+                                                )
+                                            }
                                             Text(
-                                                text = "${target.name} (${target.voteCount} votes)",
-                                                style = MaterialTheme.typography.titleMedium,
-                                                color = MaterialTheme.colorScheme.onSurface
-                                            )
-                                            Text(
-                                                text = if (!roleRevealed) "CHECKING..."
-                                                else if (target.isImpostor) "IMPOSTOR"
-                                                else "AGENT",
+                                                text = if (!roleRevealed) "CHECKING..." else target.roleIdentity.displayTitle,
                                                 style = MaterialTheme.typography.labelLarge,
                                                 fontWeight = FontWeight.Bold,
-                                                color = if (!roleRevealed) palette.cyanAccent
-                                                else if (target.isImpostor) palette.impostorGlow
-                                                else palette.normalGlow
+                                                color = if (!roleRevealed) palette.cyanAccent else targetStyle.glow
                                             )
                                         }
                                     }
@@ -406,7 +420,13 @@ fun EliminationRevealOverlay(
                                             Text(
                                                 text = when {
                                                     eliminatedPlayers.isEmpty() -> "NO IMPOSTOR CAUGHT"
-                                                    singleTarget != null -> if (singleTarget.isImpostor) "IMPOSTOR!" else "REGULAR AGENT"
+                                                    singleTarget != null -> when (singleTarget.roleIdentity) {
+                                                        GameRoleIdentity.AGENT_KILLER -> "AGENT KILLER!"
+                                                        GameRoleIdentity.IMPOSTOR -> "IMPOSTOR!"
+                                                        GameRoleIdentity.SAVIOR_AGENT -> "SAVIOR AGENT"
+                                                        GameRoleIdentity.AGENT_DIRECTOR -> "AGENT DIRECTOR"
+                                                        GameRoleIdentity.AGENT -> "REGULAR AGENT"
+                                                    }
                                                     hasEliminatedImpostor -> "IMPOSTOR EXPOSED!"
                                                     else -> "ALL ELIMINATED WERE AGENTS"
                                                 },

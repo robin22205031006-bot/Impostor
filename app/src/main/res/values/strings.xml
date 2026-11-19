@@ -1,16 +1,5 @@
 <resources>
     <string name="app_name">Impostor</string>
-    <string name="sign_in_with_google">Sign in with Google</string>
-    <string name="auth_headline">Expose the Impostor</string>
-    <string name="auth_subtitle">Blend in or get caught. Play on one device or link up across devices in real time.</string>
     <string name="category_label">CATEGORY</string>
     <string name="genre_label">Genre</string>
-    <string name="hint_label">HINT</string>
-    <string name="impostor_badge">IMPOSTOR</string>
-    <string name="crew_badge">AGENT</string>
-    <string name="pass_and_play">Pass &amp; Play</string>
-    <string name="online_multiplayer">Online Multiplayer</string>
-    <string name="create_room">Create Room</string>
-    <string name="join_room">Join Room</string>
-    <string name="sign_out">Sign Out</string>
 </resources>
