@@ -178,7 +178,7 @@ fun EliminationRevealOverlay(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xEB050812))
+            .background(MaterialTheme.colorScheme.background.copy(alpha = 0.94f))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,

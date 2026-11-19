@@ -213,7 +213,11 @@ class LocalGameViewModel : ViewModel() {
             null
         }
         val chosenDirector = if (curr.agentDirectorEnabled && regularAgents.isNotEmpty()) {
-            if (regularAgents.size >= 2) regularAgents[1] else regularAgents[0]
+            when {
+                regularAgents.size >= 2 -> regularAgents[1]
+                chosenSavior == null -> regularAgents[0]
+                else -> null
+            }
         } else {
             null
         }
@@ -305,7 +309,7 @@ class LocalGameViewModel : ViewModel() {
                 it.copy(
                     currentTurnIndex = nextIndex,
                     remainingTurnSeconds = it.turnDurationSeconds,
-                    isTimerPaused = false
+                    isTimerPaused = !it.timerEnabled
                 )
             }
         }

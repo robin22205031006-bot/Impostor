@@ -1,6 +1,6 @@
 {
   "name": "Impostor",
-  "description": "A social deduction party game with customizable impostor counts, glowing role cards, category & genre word hints, turn timers, and cross-device multiplayer.",
+  "description": "A standalone offline social deduction party game with customizable impostor counts, glowing role emblems, category & genre word hints, and circular turn timers.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

@@ -104,6 +104,8 @@ import com.example.ui.components.TurnTimerEventBus
 import com.example.ui.components.UltimateKillerAbilityCard
 import com.example.ui.components.style
 import com.example.ui.theme.LocalImpostorPalette
+import com.example.data.GamePhase
+import com.example.viewmodel.GameViewModel
 import com.example.viewmodel.LocalGameUiState
 import com.example.viewmodel.LocalGameViewModel
 import com.example.viewmodel.LocalPhase
@@ -111,20 +113,25 @@ import kotlinx.coroutines.flow.collectLatest
 
 @Composable
 fun LocalGameScreen(
-    viewModel: LocalGameViewModel
+    viewModel: LocalGameViewModel,
+    gameViewModel: GameViewModel = androidx.lifecycle.viewmodel.compose.viewModel(key = "tactical_game_lobby")
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val lobbyState by gameViewModel.gameState.collectAsStateWithLifecycle()
     val soundEnabled by SoundCuePlayer.soundEnabled.collectAsStateWithLifecycle()
     val palette = LocalImpostorPalette.current
     var dismissedEliminationRound by rememberSaveable { mutableIntStateOf(0) }
     var showConfirmExitDialog by remember { mutableStateOf(false) }
+    var showRoleLobby by rememberSaveable { mutableStateOf(false) }
 
     val isRoundInProgress = state.phase == LocalPhase.REVEAL ||
         state.phase == LocalPhase.PLAYING ||
         state.phase == LocalPhase.VOTING
 
-    BackHandler(enabled = state.phase != LocalPhase.SETUP) {
-        if (isRoundInProgress) {
+    BackHandler(enabled = state.phase != LocalPhase.SETUP || (showRoleLobby && lobbyState.phase == GamePhase.LOBBY)) {
+        if (state.phase == LocalPhase.SETUP && showRoleLobby) {
+            showRoleLobby = false
+        } else if (isRoundInProgress) {
             showConfirmExitDialog = true
         } else {
             viewModel.returnToSetup()
@@ -205,15 +212,24 @@ fun LocalGameScreen(
                         }
                     }
                     Column {
+                        val isLobbyTab = state.phase == LocalPhase.SETUP && showRoleLobby
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             PulsingStatusDot(
-                                color = if (state.phase == LocalPhase.SETUP) palette.normalAccent else palette.cyanAccent
+                                color = when {
+                                    isLobbyTab -> palette.cyanAccent
+                                    state.phase == LocalPhase.SETUP -> palette.normalAccent
+                                    else -> palette.cyanAccent
+                                }
                             )
                             Text(
-                                text = if (state.phase == LocalPhase.SETUP) "IMPOSTOR" else "PASS & PLAY",
+                                text = when {
+                                    isLobbyTab -> "ROLE LOBBY"
+                                    state.phase == LocalPhase.SETUP -> "IMPOSTOR"
+                                    else -> "PASS & PLAY"
+                                },
                                 style = if (state.phase == LocalPhase.SETUP) {
                                     MaterialTheme.typography.headlineMedium
                                 } else {
@@ -223,9 +239,13 @@ fun LocalGameScreen(
                             )
                         }
                         Text(
-                            text = "Pass & Play • ${state.gameMode.title} • ${state.players.size} Players",
+                            text = if (isLobbyTab) {
+                                "Role Lobby • ${lobbyState.phase.title} • ${lobbyState.players.size} Players"
+                            } else {
+                                "Pass & Play • ${state.gameMode.title} • ${state.players.size} Players"
+                            },
                             style = MaterialTheme.typography.bodyMedium,
-                            color = palette.normalAccent
+                            color = if (isLobbyTab) palette.cyanAccent else palette.normalAccent
                         )
                     }
                 }
@@ -290,6 +310,57 @@ fun LocalGameScreen(
                 }
             }
 
+            if (state.phase == LocalPhase.SETUP) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    val fullActive = !showRoleLobby
+                    Surface(
+                        onClick = { showRoleLobby = false },
+                        color = if (fullActive) palette.normalSurface else MaterialTheme.colorScheme.surfaceContainer,
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(
+                            width = if (fullActive) 1.5.dp else 1.dp,
+                            color = if (fullActive) palette.normalAccent else MaterialTheme.colorScheme.outlineVariant
+                        ),
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("tab_pass_and_play")
+                    ) {
+                        Text(
+                            text = "Pass & Play",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = if (fullActive) palette.normalGlow else MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(vertical = 10.dp)
+                        )
+                    }
+                    Surface(
+                        onClick = { showRoleLobby = true },
+                        color = if (showRoleLobby) palette.cyanSurface else MaterialTheme.colorScheme.surfaceContainer,
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(
+                            width = if (showRoleLobby) 1.5.dp else 1.dp,
+                            color = if (showRoleLobby) palette.cyanAccent else MaterialTheme.colorScheme.outlineVariant
+                        ),
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("tab_role_lobby")
+                    ) {
+                        Text(
+                            text = "Role Lobby",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = if (showRoleLobby) palette.cyanAccent else MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(vertical = 10.dp)
+                        )
+                    }
+                }
+            }
+
             AnimatedContent(
                 targetState = state.phase,
                 transitionSpec = {
@@ -303,24 +374,30 @@ fun LocalGameScreen(
                 modifier = Modifier.weight(1f)
             ) { phase ->
                 when (phase) {
-                    LocalPhase.SETUP -> GameSetupScreen(
-                        state = state,
-                        onAddPlayer = viewModel::addPlayer,
-                        onRenamePlayer = viewModel::renamePlayer,
-                        onRemovePlayer = viewModel::removePlayer,
-                        onSelectMode = viewModel::setGameMode,
-                        onSetImpostors = viewModel::setImpostorCount,
-                        onSetDuration = viewModel::setTurnDuration,
-                        onSelectCategory = viewModel::setCategory,
-                        onToggleHints = viewModel::setHintsEnabled,
-                        onToggleCategoryClues = viewModel::setCategoryCluesEnabled,
-                        onToggleTimer = viewModel::setTimerEnabled,
-                        onToggleImpostorAbility = viewModel::setImpostorAbilityEnabled,
-                        onToggleSaviorAgent = viewModel::setSaviorAgentEnabled,
-                        onToggleAgentDirector = viewModel::setAgentDirectorEnabled,
-                        onToggleAgentPrediction = viewModel::setAgentPredictionEnabled,
-                        onStartRound = viewModel::startRound
-                    )
+                    LocalPhase.SETUP -> {
+                        if (showRoleLobby) {
+                            GameLobbyScreen(viewModel = gameViewModel)
+                        } else {
+                            GameSetupScreen(
+                                state = state,
+                                onAddPlayer = viewModel::addPlayer,
+                                onRenamePlayer = viewModel::renamePlayer,
+                                onRemovePlayer = viewModel::removePlayer,
+                                onSelectMode = viewModel::setGameMode,
+                                onSetImpostors = viewModel::setImpostorCount,
+                                onSetDuration = viewModel::setTurnDuration,
+                                onSelectCategory = viewModel::setCategory,
+                                onToggleHints = viewModel::setHintsEnabled,
+                                onToggleCategoryClues = viewModel::setCategoryCluesEnabled,
+                                onToggleTimer = viewModel::setTimerEnabled,
+                                onToggleImpostorAbility = viewModel::setImpostorAbilityEnabled,
+                                onToggleSaviorAgent = viewModel::setSaviorAgentEnabled,
+                                onToggleAgentDirector = viewModel::setAgentDirectorEnabled,
+                                onToggleAgentPrediction = viewModel::setAgentPredictionEnabled,
+                                onStartRound = viewModel::startRound
+                            )
+                        }
+                    }
 
                     LocalPhase.REVEAL -> LocalRevealContent(
                         state = state,
