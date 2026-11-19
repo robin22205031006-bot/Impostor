@@ -66,6 +66,9 @@ android {
     compose = true
     buildConfig = true
   }
+  androidResources {
+    generateResValues = true
+  }
   testOptions { unitTests { isIncludeAndroidResources = true } }
   dependenciesInfo {
     includeInApk = false
