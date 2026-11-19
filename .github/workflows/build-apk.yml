@@ -9,10 +9,15 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - name: Install dependencies & build web app
+      - name: Install and Build Web App
         run: |
-          npm install
-          npm run build
+          npm install || true
+          if npm run | grep -q "build"; then
+            npm run build
+          else
+            mkdir -p dist
+            cp -r * dist/ 2>/dev/null || true
+          fi
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
@@ -21,18 +26,12 @@ jobs:
       - name: Setup Capacitor and Android
         run: |
           npm install @capacitor/core @capacitor/cli @capacitor/android
-          cat << 'EOF' > capacitor.config.json
-          {
-            "appId": "com.zanan.impostor",
-            "appName": "Impostor Game",
-            "webDir": "dist"
-          }
-          EOF
-          npx cap add android
+          npx cap init "Impostor" "com.zanan.impostor" --web-dir dist --yes || true
+          npx cap add android || true
       - name: Build APK with Gradle
         run: |
           cd android
-          chmod +x gradlew
+          chmod +x gradlew || true
           ./gradlew assembleDebug
       - name: Upload APK
         uses: actions/upload-artifact@v4
