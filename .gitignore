@@ -24,3 +24,5 @@ debug.keystore
 public/
 *.apk
 *.aab
+!apk/
+!apk/Impostor.apk

@@ -525,12 +525,12 @@ private fun ModePickSetupStep(
                             }
                         }
                         Text(
-                            text = "Role Lobby",
+                            text = "Role Assignment",
                             style = MaterialTheme.typography.headlineSmall,
                             fontWeight = FontWeight.ExtraBold
                         )
                         Text(
-                            text = "Quick location lobby with all role cards, emergency meeting alert, and live verdict voting.",
+                            text = "Randomly assign Impostor & Agents roles at session start, generate category words with Agent hints, and run live voting.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

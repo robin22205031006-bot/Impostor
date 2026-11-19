@@ -155,7 +155,7 @@ fun RoundOutcomeScreen(
                     Text(
                         text = state.outcomeReason.ifBlank {
                             if (isVictory) {
-                                "The Crewmates identified and voted out the Impostor!"
+                                "The Agents identified and voted out the Impostor!"
                             } else {
                                 "The Impostors avoided elimination and achieved their goal!"
                             }
@@ -167,7 +167,7 @@ fun RoundOutcomeScreen(
                 }
             }
 
-            // Impostors & Location Reveal Card
+            // Impostors & Secret Word Reveal Card
             GlassSectionCard(
                 title = "CLASSIFIED DEBRIEF",
                 icon = Icons.Filled.LocationOn,
@@ -181,7 +181,7 @@ fun RoundOutcomeScreen(
                 )
                 state.locationWord?.let { loc ->
                     Text(
-                        text = "Secret Location: ${loc.word} (${loc.genre})",
+                        text = "Secret Word: ${loc.word} (${loc.category} • ${loc.genre})",
                         style = MaterialTheme.typography.bodyMedium,
                         color = palette.normalGlow
                     )
@@ -253,7 +253,7 @@ fun RoundOutcomeScreen(
                                             )
                                             Text(
                                                 text = buildString {
-                                                    append(if (isImpostor) "Impostor" else "Crewmate")
+                                                    append(if (isImpostor) "Impostor" else "Agent")
                                                     if (wasVotedOut) append(" • Voted Out")
                                                 },
                                                 style = MaterialTheme.typography.labelSmall,

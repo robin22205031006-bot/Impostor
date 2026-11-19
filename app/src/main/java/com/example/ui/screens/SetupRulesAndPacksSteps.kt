@@ -332,8 +332,8 @@ internal fun RulesSetupStep(
             // Hints & Category Labels
             item {
                 RuleToggleCard(
-                    title = "Word Hints",
-                    subtitle = "Show a 1-word clue on revealed role cards",
+                    title = "Agent Hints",
+                    subtitle = "Provide a 1-word hint for Agents (hidden from Impostor)",
                     checked = state.hintsEnabled,
                     onCheckedChange = onToggleHints,
                     testTag = "toggle_hints_switch"

@@ -71,7 +71,9 @@ fun RoleWordCard(
     val palette = LocalImpostorPalette.current
     val isImpostor = role == PlayerRole.IMPOSTOR
     val hasCategory = showCategoryAndGenre && (category.isNotBlank() || genre.isNotBlank())
-    val hasHint = showHint && hint.isNotBlank()
+    val visibleSecretWord = if (isImpostor) "" else secretWord
+    val visibleAgentHint = if (isImpostor) "" else hint
+    val hasAgentHint = !isImpostor && showHint && visibleAgentHint.isNotBlank()
 
     val targetStyle = roleIdentity.style(palette)
     val accent by animateColorAsState(
@@ -298,27 +300,38 @@ fun RoleWordCard(
                         textAlign = TextAlign.Center
                     )
                     Spacer(modifier = Modifier.height(8.dp))
+                    Surface(
+                        color = targetStyle.accent.copy(alpha = 0.16f),
+                        shape = RoundedCornerShape(14.dp),
+                        border = BorderStroke(1.dp, targetStyle.glow.copy(alpha = 0.55f)),
+                        modifier = Modifier.testTag("impostor_hidden_word_badge")
+                    ) {
+                        Text(
+                            text = "SECRET WORD: HIDDEN (???)",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = targetStyle.glow,
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = when {
-                            roleIdentity == GameRoleIdentity.AGENT_KILLER && hasHint ->
-                                "No word revealed. Use your clue to blend in — and void one player's vote below!"
-                            roleIdentity == GameRoleIdentity.AGENT_KILLER ->
-                                "No word or hint revealed. Listen closely to blend in — and silence one player's vote below!"
-                            hasHint ->
-                                "No word revealed. Use the clue below to blend in or guess the term!"
-                            else ->
-                                "No word or hint revealed. Listen closely to blend in!"
+                        text = if (roleIdentity == GameRoleIdentity.AGENT_KILLER) {
+                            "Secret word & Agent hints are hidden. Listen closely to blend in — and void one player's vote below!"
+                        } else {
+                            "Secret word & Agent hints are hidden. Listen to the Agents' clues to blend in or guess the word!"
                         },
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        textAlign = TextAlign.Center
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.testTag("impostor_no_hint_note")
                     )
                 } else {
                     Text(
                         text = when (roleIdentity) {
                             GameRoleIdentity.SAVIOR_AGENT -> "SAVIOR AGENT • SECRET WORD"
                             GameRoleIdentity.AGENT_DIRECTOR -> "AGENT DIRECTOR • SECRET WORD"
-                            else -> "CREWMATE • SECRET WORD"
+                            else -> "AGENT • SECRET WORD"
                         },
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold,
@@ -327,7 +340,7 @@ fun RoleWordCard(
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = secretWord,
+                        text = visibleSecretWord,
                         style = MaterialTheme.typography.displayLarge,
                         color = MaterialTheme.colorScheme.onSurface,
                         textAlign = TextAlign.Center,
@@ -363,8 +376,8 @@ fun RoleWordCard(
             }
         }
 
-        // Glowing Hint Box tinted to the exact Role Color
-        if (hasHint) {
+        // Glowing Hint Box shown ONLY for Agents
+        if (hasAgentHint) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -395,7 +408,7 @@ fun RoleWordCard(
                         shape = RoundedCornerShape(18.dp)
                     )
                     .padding(horizontal = 18.dp, vertical = 16.dp)
-                    .testTag(if (isImpostor) "hint_box_red" else "hint_box_green")
+                    .testTag("hint_box_green")
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -418,18 +431,16 @@ fun RoleWordCard(
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = when (roleIdentity) {
-                                GameRoleIdentity.AGENT_KILLER -> "AGENT KILLER HINT"
-                                GameRoleIdentity.IMPOSTOR -> "IMPOSTOR HINT"
                                 GameRoleIdentity.SAVIOR_AGENT -> "SAVIOR HINT"
                                 GameRoleIdentity.AGENT_DIRECTOR -> "DIRECTOR HINT"
-                                GameRoleIdentity.AGENT -> "AGENT HINT"
+                                else -> "AGENT HINT"
                             },
                             style = MaterialTheme.typography.labelSmall,
                             color = glow
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = hint,
+                            text = visibleAgentHint,
                             style = MaterialTheme.typography.titleMedium,
                             color = MaterialTheme.colorScheme.onSurface
                         )

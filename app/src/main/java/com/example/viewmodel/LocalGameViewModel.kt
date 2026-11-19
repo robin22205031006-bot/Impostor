@@ -5,11 +5,13 @@ import androidx.lifecycle.viewModelScope
 import com.example.audio.SoundCuePlayer
 import com.example.data.AvatarCatalog
 import com.example.data.AvatarPose
+import com.example.data.CategoryWordGenerator
 import com.example.data.CryptoRandom
 import com.example.data.EmergencyMeetingAlert
 import com.example.data.GameMode
 import com.example.data.LocalPlayer
 import com.example.data.PlayerRole
+import com.example.data.PlayerWordBriefing
 import com.example.data.RoundScoring
 import com.example.data.WordBank
 import com.example.data.WordEntry
@@ -88,7 +90,24 @@ data class LocalGameUiState(
     val usedWords: Set<String> = emptySet(),
     val emergencyMeeting: EmergencyMeetingAlert = EmergencyMeetingAlert(),
     val errorBanner: String? = null
-)
+) {
+    fun roleFor(playerId: String): PlayerRole =
+        if (playerId in impostorIds) PlayerRole.IMPOSTOR else PlayerRole.NORMAL
+
+    fun wordBriefingFor(playerId: String): PlayerWordBriefing? {
+        val word = activeWord ?: return null
+        val role = roleFor(playerId)
+        val isImp = role == PlayerRole.IMPOSTOR
+        return PlayerWordBriefing(
+            role = role,
+            secretWord = if (isImp) null else word.word,
+            agentHint = if (isImp || !hintsEnabled) null else activeHint.ifBlank { null },
+            category = if (categoryCluesEnabled) word.category else null,
+            genre = if (categoryCluesEnabled) word.genre else null,
+            isSecretWordHidden = isImp
+        )
+    }
+}
 
 class LocalGameViewModel : ViewModel() {
 
@@ -291,7 +310,14 @@ class LocalGameViewModel : ViewModel() {
         }
         val maxImp = (curr.players.size - 1).coerceAtLeast(1)
         val actualImpCount = curr.impostorCount.coerceIn(1, maxImp)
-        val pickedWord = WordBank.pickRandomWord(curr.selectedCategory, curr.usedWords)
+        val generatedRound = CategoryWordGenerator.generate(
+            category = curr.selectedCategory,
+            usedWords = curr.usedWords,
+            mode = curr.gameMode,
+            hintsEnabled = curr.hintsEnabled,
+            categoryCluesEnabled = curr.categoryCluesEnabled
+        )
+        val pickedWord = generatedRound.entry
         val shuffledPlayers = CryptoRandom.shuffled(curr.players)
         val chosenImpostorList = shuffledPlayers.take(actualImpCount).map { it.id }
         val chosenImpostors = chosenImpostorList.toSet()
@@ -325,7 +351,7 @@ class LocalGameViewModel : ViewModel() {
                 impostorCount = actualImpCount,
                 roundNumber = it.roundNumber + 1,
                 activeWord = pickedWord,
-                activeHint = if (it.hintsEnabled) pickedWord.hintForMode(it.gameMode) else "",
+                activeHint = generatedRound.agentHintText,
                 impostorIds = chosenImpostors,
                 ultimateKillerId = chosenKiller,
                 rawKillerTargetId = null,
@@ -357,6 +383,39 @@ class LocalGameViewModel : ViewModel() {
 
     fun showCurrentPlayerCard() {
         _uiState.update { it.copy(isRoleCardVisible = true) }
+    }
+
+    fun reshuffleSessionRoles() {
+        val curr = _uiState.value
+        if (curr.phase != LocalPhase.REVEAL || curr.revealPlayerIndex > 0 || curr.isRoleCardVisible) return
+        val maxImp = (curr.players.size - 1).coerceAtLeast(1)
+        val actualImpCount = curr.impostorCount.coerceIn(1, maxImp)
+        val shuffledPlayers = CryptoRandom.shuffled(curr.players)
+        val chosenImpostorList = shuffledPlayers.take(actualImpCount).map { it.id }
+        val chosenImpostors = chosenImpostorList.toSet()
+        val chosenKiller = if (curr.impostorAbilityEnabled) CryptoRandom.pickOne(chosenImpostorList) else null
+        val regularAgents = CryptoRandom.shuffled(
+            curr.players.filterNot { it.id in chosenImpostors }.map { it.id }
+        )
+        val chosenSavior = if (curr.saviorAgentEnabled && regularAgents.isNotEmpty()) regularAgents.first() else null
+        val chosenDirector = if (curr.agentDirectorEnabled && regularAgents.isNotEmpty()) {
+            when {
+                regularAgents.size >= 2 -> regularAgents[1]
+                chosenSavior == null -> regularAgents[0]
+                else -> null
+            }
+        } else {
+            null
+        }
+        _uiState.update {
+            it.copy(
+                impostorIds = chosenImpostors,
+                ultimateKillerId = chosenKiller,
+                saviorAgentId = chosenSavior,
+                agentDirectorId = chosenDirector,
+                turnOrderIds = CryptoRandom.shuffled(curr.players.map { p -> p.id })
+            )
+        }
     }
 
     fun hideAndAdvanceReveal() {
@@ -456,7 +515,7 @@ class LocalGameViewModel : ViewModel() {
         val activeUid = curr.turnOrderIds.getOrNull(curr.currentTurnIndex)
         val reporterName = curr.players.firstOrNull { it.id == reporterId }?.name
             ?: curr.players.firstOrNull { it.id == activeUid }?.name
-            ?: "Crewmate"
+            ?: "Agent"
         SoundCuePlayer.playEmergencyMeetingCue()
         _uiState.update {
             it.copy(

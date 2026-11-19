@@ -36,8 +36,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.HelpOutline
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -609,7 +609,7 @@ fun HowToPlaySheet(
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Icon(
-                        imageVector = Icons.Filled.HelpOutline,
+                        imageVector = Icons.AutoMirrored.Filled.HelpOutline,
                         contentDescription = null,
                         tint = palette.goldAccent
                     )
@@ -628,7 +628,7 @@ fun HowToPlaySheet(
             HowToPlayStepCard(
                 step = "01 • PASS & FLIP",
                 title = "See your card in secret",
-                body = "Crewmates see the Secret Word. Impostors see no word — only an optional Category/Hint if turned on."
+                body = "Agents see the Secret Word and a helpful hint. Impostors see no secret word — only optional category context — and must bluff to survive."
             )
             HowToPlayStepCard(
                 step = "02 • CLUES & BLUFFING",

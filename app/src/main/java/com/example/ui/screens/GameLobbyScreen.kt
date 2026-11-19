@@ -98,12 +98,15 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.ui.platform.LocalContext
 import com.example.data.AvatarCatalog
 import com.example.data.AvatarPose
+import com.example.data.CategoryWordGenerator
+import com.example.data.WordBank
 import com.example.ui.components.AvatarPickerSheet
 import com.example.ui.components.CharacterAvatarThumbnail
 import com.example.ui.components.CircularCountdownTimer
 import com.example.ui.components.EmergencyMeetingOverlay
 import com.example.ui.components.GameRoleIdentity
 import com.example.ui.components.GlassSectionCard
+import com.example.ui.components.PlumTogglePill
 import com.example.ui.components.PulsingStatusDot
 import com.example.ui.components.RoleEmblemBadge
 import com.example.ui.components.RoundOutcomeScreen
@@ -112,6 +115,11 @@ import com.example.ui.components.VotingScreen
 import com.example.ui.components.style
 import com.example.ui.theme.LocalImpostorPalette
 import com.example.viewmodel.GameViewModel
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material.icons.filled.Category
+import androidx.compose.material.icons.filled.Lightbulb
+import androidx.compose.material.icons.filled.Lock
 
 @Composable
 fun GameLobbyScreen(
@@ -129,6 +137,8 @@ fun GameLobbyScreen(
         onSetPlayerCount = viewModel::setPlayerCount,
         onSetImpostorCount = viewModel::setImpostorCount,
         onShuffleRoles = viewModel::assignRoles,
+        onSelectCategory = viewModel::setCategory,
+        onToggleHints = viewModel::setHintsEnabled,
         onShuffleLocation = viewModel::selectNewLocationWord,
         onToggleRoleReveal = viewModel::toggleRoleReveal,
         onRevealAll = viewModel::revealAllRoles,
@@ -156,6 +166,8 @@ fun GameLobbyContent(
     onSetPlayerCount: (Int) -> Unit = {},
     onSetImpostorCount: (Int) -> Unit,
     onShuffleRoles: () -> Unit,
+    onSelectCategory: (String) -> Unit = {},
+    onToggleHints: (Boolean) -> Unit = {},
     onShuffleLocation: () -> Unit = {},
     onToggleRoleReveal: (String) -> Unit,
     onRevealAll: () -> Unit,
@@ -251,6 +263,8 @@ fun GameLobbyContent(
                     onSetPlayerCount = onSetPlayerCount,
                     onSetImpostorCount = onSetImpostorCount,
                     onShuffleRoles = onShuffleRoles,
+                    onSelectCategory = onSelectCategory,
+                    onToggleHints = onToggleHints,
                     onShuffleLocation = onShuffleLocation,
                     onToggleRoleReveal = onToggleRoleReveal,
                     onRevealAll = onRevealAll,
@@ -305,6 +319,8 @@ private fun LobbyPhaseView(
     onSetPlayerCount: (Int) -> Unit,
     onSetImpostorCount: (Int) -> Unit,
     onShuffleRoles: () -> Unit,
+    onSelectCategory: (String) -> Unit,
+    onToggleHints: (Boolean) -> Unit,
     onShuffleLocation: () -> Unit,
     onToggleRoleReveal: (String) -> Unit,
     onRevealAll: () -> Unit,
@@ -316,39 +332,54 @@ private fun LobbyPhaseView(
 ) {
     val palette = LocalImpostorPalette.current
     val maxImpostors = (state.players.size - 1).coerceAtLeast(1)
+    val agentCount = (state.players.size - state.impostorCount).coerceAtLeast(1)
     val allRevealed = state.players.isNotEmpty() && state.revealedRolePlayerIds.size >= state.players.size
     var newPlayerName by remember { mutableStateOf("") }
     var showLocationPreview by remember { mutableStateOf(false) }
     var avatarPickerPlayerId by remember { mutableStateOf<String?>(null) }
+    val categories = remember { CategoryWordGenerator.availableCategories() }
 
     Column(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
-            modifier = Modifier.weight(1f),
+            modifier = Modifier
+                .weight(1f)
+                .testTag("lobby_lazy_column"),
             contentPadding = PaddingValues(horizontal = 20.dp, vertical = 6.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            // Compact Session Setup (Players + Impostors + Role Actions) Card
+            // Session Role Assignment Setup Card (Players + Impostors/Agents split + Randomize Action)
             item {
                 Surface(
                     color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.90f),
                     shape = RoundedCornerShape(18.dp),
                     border = BorderStroke(1.dp, palette.impostorAccent.copy(alpha = 0.45f)),
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("role_assignment_banner")
                 ) {
                     Column(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Text(
-                                text = "SESSION SETUP",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                            Column {
+                                Text(
+                                    text = "ROLE ASSIGNMENT • DEAL #${state.sessionSeedNumber}",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = palette.goldAccent
+                                )
+                                Text(
+                                    text = "${state.impostorCount} Impostor${if (state.impostorCount > 1) "s" else ""} • $agentCount Agent${if (agentCount != 1) "s" else ""}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.testTag("lobby_role_split_summary")
+                                )
+                            }
                             Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                                 TextButton(
                                     onClick = onShuffleRoles,
@@ -477,7 +508,8 @@ private fun LobbyPhaseView(
                 GlowingLobbyRoleCard(
                     player = player,
                     assignedRole = assignedRole,
-                    locationWord = state.locationWord?.word,
+                    secretWord = state.referenceWordFor(player.id),
+                    agentHint = state.referenceHintFor(player.id),
                     isRevealed = isRevealed,
                     canRemove = state.players.size > 2,
                     onToggleReveal = { onToggleRoleReveal(player.id) },
@@ -486,12 +518,13 @@ private fun LobbyPhaseView(
                 )
             }
 
-            // Secret Location Word Card for Crewmates
+            // Category-Based Word Generator Card (Agents get Hint; Secret Word hidden from Impostors)
             item {
                 GlassSectionCard(
-                    title = "SECRET LOCATION WORD",
-                    icon = Icons.Filled.LocationOn,
+                    title = "CATEGORY WORD GENERATOR",
+                    icon = Icons.Filled.Category,
                     accentColor = palette.normalAccent,
+                    modifier = Modifier.testTag("category_word_generator_card"),
                     trailing = {
                         Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                             TextButton(
@@ -509,7 +542,7 @@ private fun LobbyPhaseView(
                             ) {
                                 Icon(
                                     imageVector = Icons.Filled.Refresh,
-                                    contentDescription = "New random location",
+                                    contentDescription = "Generate new word",
                                     tint = palette.normalGlow,
                                     modifier = Modifier.size(16.dp)
                                 )
@@ -519,14 +552,68 @@ private fun LobbyPhaseView(
                         }
                     }
                 ) {
-                    val loc = state.locationWord
+                    Row(
+                        modifier = Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        categories.forEach { category ->
+                            val isSelected = state.selectedCategory.equals(category, ignoreCase = true)
+                            val label = if (category == WordBank.CATEGORY_ALL) "All Categories" else category
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = { onSelectCategory(category) },
+                                label = { Text(label) },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = palette.goldAccent,
+                                    selectedLabelColor = palette.goldDarkInk
+                                ),
+                                modifier = Modifier.testTag("lobby_category_chip_${category.lowercase().replace(" ", "_")}")
+                            )
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Lightbulb,
+                                contentDescription = null,
+                                tint = palette.goldAccent,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                text = "Agent Hints (hidden from Impostor)",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        PlumTogglePill(
+                            checked = state.hintsEnabled,
+                            onCheckedChange = onToggleHints,
+                            modifier = Modifier.testTag("lobby_agent_hints_toggle")
+                        )
+                    }
+
+                    val word = state.locationWord
                     Text(
-                        text = if (showLocationPreview && loc != null) {
-                            "${loc.word} (${loc.genre})"
+                        text = if (showLocationPreview && word != null) {
+                            buildString {
+                                append("${word.word} (${word.category} • ${word.genre})")
+                                if (state.hintsEnabled && word.hint.isNotBlank()) {
+                                    append(" — Agent Hint: ${word.hint}")
+                                }
+                            }
                         } else {
-                            "Hidden — revealed on Crewmate cards above"
+                            "Word & Agent Hint ready (${word?.category ?: state.selectedCategory}) — hidden from Impostor"
                         },
-                        style = MaterialTheme.typography.titleMedium,
+                        style = MaterialTheme.typography.titleSmall,
                         color = if (showLocationPreview) palette.normalGlow else MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.testTag("lobby_location_word_text")
                     )
@@ -608,7 +695,8 @@ private fun LobbyPhaseView(
 private fun GlowingLobbyRoleCard(
     player: LocalPlayer,
     assignedRole: PlayerRole,
-    locationWord: String?,
+    secretWord: String?,
+    agentHint: String?,
     isRevealed: Boolean,
     canRemove: Boolean,
     onToggleReveal: () -> Unit,
@@ -698,26 +786,35 @@ private fun GlowingLobbyRoleCard(
                             text = if (assignedRole == PlayerRole.IMPOSTOR) {
                                 "ROLE: IMPOSTOR"
                             } else {
-                                "ROLE: CREWMATE"
+                                "ROLE: AGENT"
                             },
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold,
                             color = style.glow
                         )
-                        Text(
-                            text = if (assignedRole == PlayerRole.IMPOSTOR) {
-                                "Location: ??? (Blend in!)"
-                            } else {
-                                "Location: ${locationWord ?: "Pending"}"
-                            },
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
+                        if (assignedRole == PlayerRole.IMPOSTOR) {
+                            Text(
+                                text = "Secret Word: HIDDEN (Blend in!)",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        } else {
+                            Text(
+                                text = buildString {
+                                    append("Word: ${secretWord ?: "Pending"}")
+                                    if (!agentHint.isNullOrBlank()) {
+                                        append(" • Hint: $agentHint")
+                                    }
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
                     }
                 }
                 if (!isRevealed) {
                     Text(
-                        text = "Role hidden — tap to reveal glow",
+                        text = "Role hidden — tap to reveal card",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -965,14 +1062,14 @@ private fun DiscussionPhaseView(
                 }
             }
 
-            // Private Location Reference for Crewmates during Discussion
+            // Private Word & Agent Hint Reference during Discussion
             GlassSectionCard(
-                title = "PRIVATE LOCATION REFERENCE",
+                title = "PRIVATE WORD REFERENCE",
                 icon = Icons.Filled.LocationOn,
                 accentColor = palette.normalAccent
             ) {
                 Text(
-                    text = "Crewmates may tap their name privately to reference the secret location word (${state.locationWord?.category ?: "Locations"}).",
+                    text = "Agents may tap their name privately to view the secret word & hint (${state.locationWord?.category ?: state.selectedCategory}).",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -1073,6 +1170,7 @@ private fun DiscussionPhaseView(
     if (target != null) {
         val role = state.playerRoles[target.id] ?: PlayerRole.NORMAL
         val word = state.referenceWordFor(target.id)
+        val agentHint = state.referenceHintFor(target.id)
         val identity = if (role == PlayerRole.IMPOSTOR) GameRoleIdentity.IMPOSTOR else GameRoleIdentity.AGENT
         val style = identity.style(palette)
         AlertDialog(
@@ -1086,7 +1184,7 @@ private fun DiscussionPhaseView(
                     ) {
                         RoleEmblemBadge(identity = identity, size = 40.dp, animated = true)
                         Text(
-                            text = if (role == PlayerRole.IMPOSTOR) "IMPOSTOR" else "CREWMATE",
+                            text = if (role == PlayerRole.IMPOSTOR) "IMPOSTOR" else "AGENT",
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold,
                             color = style.glow
@@ -1094,19 +1192,49 @@ private fun DiscussionPhaseView(
                     }
                     if (word != null) {
                         Text(
-                            text = "Location Word: $word",
+                            text = "Secret Word: $word",
                             style = MaterialTheme.typography.headlineSmall,
                             fontWeight = FontWeight.Bold,
                             color = palette.normalGlow
                         )
                         Text(
-                            text = "Genre: ${state.locationWord?.genre ?: "Location"} • Hint: ${state.locationWord?.hint ?: ""}",
+                            text = buildString {
+                                append("Category: ${state.locationWord?.category ?: state.selectedCategory}")
+                                append(" • Genre: ${state.locationWord?.genre ?: ""}")
+                                if (!agentHint.isNullOrBlank()) {
+                                    append("\nAgent Hint: $agentHint")
+                                }
+                            },
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     } else {
+                        Surface(
+                            color = style.accent.copy(alpha = 0.16f),
+                            shape = RoundedCornerShape(10.dp),
+                            border = BorderStroke(1.dp, style.glow.copy(alpha = 0.6f))
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Lock,
+                                    contentDescription = "Hidden word",
+                                    tint = style.glow,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Text(
+                                    text = "Secret Word Hidden",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = style.glow
+                                )
+                            }
+                        }
                         Text(
-                            text = "You are the Impostor! Listen closely to Crewmates' clues to deduce the location.",
+                            text = "You are the Impostor! Listen closely to Agents' clues to deduce the word.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

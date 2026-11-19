@@ -198,7 +198,7 @@ fun EmergencyMeetingOverlay(
                 )
 
                 Text(
-                    text = "Called by ${alert.reporterName.ifBlank { "Crewmate" }} • ${alert.reason}",
+                    text = "Called by ${alert.reporterName.ifBlank { "Agent" }} • ${alert.reason}",
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurface,

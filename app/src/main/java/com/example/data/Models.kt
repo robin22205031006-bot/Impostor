@@ -1,7 +1,7 @@
 package com.example.data
 
 enum class PlayerRole(val displayName: String) {
-    NORMAL("Crewmate"),
+    NORMAL("Agent"),
     IMPOSTOR("Impostor")
 }
 
@@ -49,9 +49,13 @@ data class GameState(
         LocalPlayer(id = "p4", name = "Player 4", avatarId = "avatar_09", avatarPose = AvatarPose.ORIGINAL)
     ),
     val impostorCount: Int = 1,
+    val selectedCategory: String = "Locations",
+    val hintsEnabled: Boolean = true,
+    val sessionSeedNumber: Int = 1,
     val playerRoles: Map<String, PlayerRole> = emptyMap(),
     val revealedRolePlayerIds: Set<String> = emptySet(),
     val locationWord: WordEntry? = null,
+    val usedWords: Set<String> = emptySet(),
     val turnOrderIds: List<String> = emptyList(),
     val currentTurnIndex: Int = 0,
     val turnStatus: TurnStatus = TurnStatus.IDLE,
@@ -75,8 +79,17 @@ data class GameState(
     val impostorIds: Set<String>
         get() = playerRoles.filterValues { it == PlayerRole.IMPOSTOR }.keys
 
+    val agentIds: Set<String>
+        get() = playerRoles.filterValues { it == PlayerRole.NORMAL }.keys
+
     fun referenceWordFor(playerId: String): String? {
         val role = playerRoles[playerId] ?: PlayerRole.NORMAL
         return if (role == PlayerRole.IMPOSTOR) null else locationWord?.word
+    }
+
+    fun referenceHintFor(playerId: String): String? {
+        if (!hintsEnabled) return null
+        val role = playerRoles[playerId] ?: PlayerRole.NORMAL
+        return if (role == PlayerRole.IMPOSTOR) null else locationWord?.hint?.ifBlank { null }
     }
 }

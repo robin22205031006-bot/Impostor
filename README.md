@@ -26,3 +26,10 @@ Requirements: **JDK 17** + **Android SDK**
 ./gradlew assembleDebug
 ```
 The compiled APK is output to `app/build/outputs/apk/debug/app-debug.apk`.
+
+### Pushing Updates Back to GitHub
+If pushing back to an existing repository that previously contained `.github/workflows/build-apk.yml` fails from an OAuth integration (or if remote history diverged):
+1. Push to a **new repository/branch** from the export UI, **or**
+2. Download the project ZIP, extract it into your local `git clone` of the repository (keeping `.git/` intact), and push using `git push` from your terminal.
+3. Optional: to re-enable GitHub Actions APK releases from a local Git push, copy `docs/build-apk-workflow.yml` to `.github/workflows/build-apk.yml`.
+

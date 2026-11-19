@@ -972,7 +972,7 @@ internal fun LocalResultsContent(
                             painter = painterResource(
                                 id = if (state.crewWon) R.drawable.img_outcome_crew_win else R.drawable.img_outcome_impostor_win
                             ),
-                            contentDescription = if (state.crewWon) "Crewmates win spotlight" else "Impostor wins spotlight",
+                            contentDescription = if (state.crewWon) "Agents win spotlight" else "Impostor wins spotlight",
                             contentScale = ContentScale.Crop,
                             modifier = Modifier.fillMaxSize()
                         )

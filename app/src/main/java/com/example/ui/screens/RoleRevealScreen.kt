@@ -35,6 +35,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FlipCameraAndroid
 import androidx.compose.material.icons.filled.Lightbulb
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -106,6 +108,9 @@ fun RoleRevealScreen(
     onSelectPrediction: (String?) -> Unit = {},
     onReveal: () -> Unit,
     onHideAndNext: () -> Unit,
+    impostorCount: Int = 1,
+    agentCount: Int = (totalPlayers - 1).coerceAtLeast(1),
+    onReshuffleRoles: (() -> Unit)? = null,
     avatarId: String? = null,
     avatarPose: AvatarPose = AvatarPose.ORIGINAL,
     modifier: Modifier = Modifier
@@ -148,21 +153,26 @@ fun RoleRevealScreen(
         }
     }
 
+    val revealScrollState = rememberScrollState()
+    LaunchedEffect(playerIndex) {
+        revealScrollState.scrollTo(0)
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
-            .padding(horizontal = 20.dp, vertical = 12.dp)
+            .padding(horizontal = 20.dp, vertical = 10.dp)
             .testTag("role_reveal_screen"),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Column(
             modifier = Modifier
                 .weight(1f)
-                .verticalScroll(rememberScrollState()),
+                .verticalScroll(revealScrollState),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            // Top Pass Progress Header
+            // Top Pass Progress Header + Randomized Session Role Split
             Surface(
                 color = MaterialTheme.colorScheme.surfaceContainer,
                 shape = RoundedCornerShape(50),
@@ -175,6 +185,54 @@ fun RoleRevealScreen(
                     color = palette.goldAccent,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 7.dp)
                 )
+            }
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceContainerLowest,
+                    shape = RoundedCornerShape(50),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                    modifier = Modifier.testTag("reveal_session_roles_summary")
+                ) {
+                    Text(
+                        text = "$impostorCount IMPOSTOR${if (impostorCount > 1) "S" else ""} • $agentCount AGENT${if (agentCount != 1) "S" else ""}",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp)
+                    )
+                }
+                if (onReshuffleRoles != null && playerIndex == 0 && !isRevealed) {
+                    Surface(
+                        onClick = onReshuffleRoles,
+                        color = palette.goldSurface,
+                        shape = RoundedCornerShape(50),
+                        border = BorderStroke(1.dp, palette.goldAccent.copy(alpha = 0.6f)),
+                        modifier = Modifier.testTag("reveal_reshuffle_roles_button")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Refresh,
+                                contentDescription = "Re-assign roles",
+                                tint = palette.goldAccent,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Text(
+                                text = "Re-deal",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = palette.goldAccent
+                            )
+                        }
+                    }
+                }
             }
 
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -507,7 +565,9 @@ private fun CardBackFace(
     val isImpostor = role == PlayerRole.IMPOSTOR
     val targetStyle = roleIdentity.style(palette)
     val hasCategory = showCategoryAndGenre && (category.isNotBlank() || genre.isNotBlank())
-    val hasHint = showHint && hint.isNotBlank()
+    val visibleSecretWord = if (isImpostor) "" else secretWord
+    val visibleAgentHint = if (isImpostor) "" else hint
+    val hasAgentHint = !isImpostor && showHint && visibleAgentHint.isNotBlank()
 
     Column(
         modifier = Modifier
@@ -518,7 +578,7 @@ private fun CardBackFace(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .defaultMinSize(minHeight = 320.dp)
+                .defaultMinSize(minHeight = 250.dp)
                 .clip(RoundedCornerShape(28.dp))
                 .background(
                     Brush.verticalGradient(
@@ -562,15 +622,41 @@ private fun CardBackFace(
                         color = targetStyle.glow,
                         textAlign = TextAlign.Center
                     )
+                    Surface(
+                        color = targetStyle.accent.copy(alpha = 0.16f),
+                        shape = RoundedCornerShape(14.dp),
+                        border = BorderStroke(1.dp, targetStyle.glow.copy(alpha = 0.6f)),
+                        modifier = Modifier.testTag("impostor_hidden_word_badge")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Lock,
+                                contentDescription = "Secret word hidden",
+                                tint = targetStyle.glow,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                text = "SECRET WORD: HIDDEN",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = targetStyle.glow
+                            )
+                        }
+                    }
                     Text(
                         text = if (roleIdentity == GameRoleIdentity.AGENT_KILLER) {
-                            "Keep calm. Listen. Blend in — and void 1 vote below."
+                            "Secret word & Agent hints stay hidden. Listen to blend in — and void 1 vote below."
                         } else {
-                            "Keep calm. Listen. Blend in — or deduce the secret word."
+                            "Secret word & Agent hints stay hidden. Listen to the Agents' clues — or deduce the word."
                         },
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        textAlign = TextAlign.Center
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.testTag("impostor_no_hint_note")
                     )
                 } else {
                     Text(
@@ -580,7 +666,7 @@ private fun CardBackFace(
                         color = palette.goldAccent
                     )
                     Text(
-                        text = secretWord,
+                        text = visibleSecretWord,
                         style = MaterialTheme.typography.displayLarge,
                         fontWeight = FontWeight.ExtraBold,
                         color = MaterialTheme.colorScheme.onBackground,
@@ -588,7 +674,7 @@ private fun CardBackFace(
                         modifier = Modifier.testTag("secret_word_text")
                     )
                     Text(
-                        text = "Give a clue. Keep the word secret.",
+                        text = "Give a clue using your Agent hint. Keep the word secret.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center
@@ -625,14 +711,14 @@ private fun CardBackFace(
             }
         }
 
-        if (hasHint) {
+        if (hasAgentHint) {
             Surface(
                 color = targetStyle.deepSurface,
                 shape = RoundedCornerShape(18.dp),
                 border = BorderStroke(1.2.dp, targetStyle.glow.copy(alpha = 0.7f)),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .testTag(if (isImpostor) "hint_box_red" else "hint_box_green")
+                    .testTag("hint_box_green")
             ) {
                 Row(
                     modifier = Modifier.padding(14.dp),
@@ -647,12 +733,12 @@ private fun CardBackFace(
                     )
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = if (isImpostor) "IMPOSTOR HINT" else "AGENT HINT",
+                            text = "AGENT HINT",
                             style = MaterialTheme.typography.labelSmall,
                             color = targetStyle.glow
                         )
                         Text(
-                            text = hint,
+                            text = visibleAgentHint,
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface

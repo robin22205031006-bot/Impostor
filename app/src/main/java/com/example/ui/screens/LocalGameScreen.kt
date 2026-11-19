@@ -322,6 +322,7 @@ fun LocalGameScreen(
                         onSelectKillTarget = viewModel::setNullifiedVoter,
                         onSelectProtectedTarget = viewModel::setProtectedPlayer,
                         onSelectPrediction = viewModel::setAgentPrediction,
+                        onReshuffleRoles = viewModel::reshuffleSessionRoles,
                         onReveal = viewModel::showCurrentPlayerCard,
                         onHideAndNext = viewModel::hideAndAdvanceReveal
                     )
@@ -474,15 +475,19 @@ private fun LocalRevealContent(
     onSelectKillTarget: (String?) -> Unit,
     onSelectProtectedTarget: (String?) -> Unit,
     onSelectPrediction: (String, String?) -> Unit,
+    onReshuffleRoles: () -> Unit,
     onReveal: () -> Unit,
     onHideAndNext: () -> Unit
 ) {
     val player = state.players.getOrNull(state.revealPlayerIndex) ?: return
     val wordEntry = state.activeWord ?: return
     val role = roleForPlayer(player.id)
+    val briefing = state.wordBriefingFor(player.id)
     val otherPlayers = remember(state.players, player.id) {
         state.players.filter { it.id != player.id }.map { it.id to it.name }
     }
+    val impCount = state.impostorIds.size.coerceAtLeast(1)
+    val agentCount = (state.players.size - impCount).coerceAtLeast(1)
 
     androidx.compose.runtime.key(player.id, state.roundNumber) {
         RoleRevealScreen(
@@ -493,8 +498,8 @@ private fun LocalRevealContent(
             role = role,
             category = wordEntry.category,
             genre = wordEntry.genre,
-            secretWord = wordEntry.word,
-            hint = state.activeHint,
+            secretWord = briefing?.secretWord.orEmpty(),
+            hint = briefing?.agentHint.orEmpty(),
             isRevealed = state.isRoleCardVisible,
             showCategoryAndGenre = state.categoryCluesEnabled,
             showHint = state.hintsEnabled,
@@ -515,6 +520,9 @@ private fun LocalRevealContent(
             onSelectPrediction = { suspectId -> onSelectPrediction(player.id, suspectId) },
             onReveal = onReveal,
             onHideAndNext = onHideAndNext,
+            impostorCount = impCount,
+            agentCount = agentCount,
+            onReshuffleRoles = onReshuffleRoles,
             avatarId = player.avatarId,
             avatarPose = player.avatarPose
         )

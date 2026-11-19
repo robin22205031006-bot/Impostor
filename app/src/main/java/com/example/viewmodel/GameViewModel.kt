@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.audio.SoundCuePlayer
 import com.example.data.AvatarCatalog
 import com.example.data.AvatarPose
+import com.example.data.CategoryWordGenerator
 import com.example.data.CryptoRandom
 import com.example.data.EmergencyMeetingAlert
 import com.example.data.GamePhase
@@ -14,6 +15,7 @@ import com.example.data.LocationWordRepository
 import com.example.data.PlayerRole
 import com.example.data.RoundOutcome
 import com.example.data.TurnStatus
+import com.example.data.WordBank
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -96,15 +98,57 @@ class GameViewModel(
             val clamped = curr.impostorCount.coerceIn(1, maxImpostors)
             curr.copy(
                 impostorCount = clamped,
-                playerRoles = buildRoleAssignments(curr.players, clamped)
+                sessionSeedNumber = curr.sessionSeedNumber + 1,
+                playerRoles = buildRoleAssignments(curr.players, clamped),
+                revealedRolePlayerIds = emptySet()
             )
         }
+    }
+
+    fun setCategory(category: String) {
+        _gameState.update { curr ->
+            val exclude = curr.locationWord?.word?.let { curr.usedWords + it } ?: curr.usedWords
+            val generated = if (category == "Locations" && locationRepository === LocationWordRepository) {
+                CategoryWordGenerator.generate(
+                    category = category,
+                    usedWords = exclude,
+                    hintsEnabled = curr.hintsEnabled
+                ).entry
+            } else {
+                CategoryWordGenerator.generate(
+                    category = category,
+                    usedWords = exclude,
+                    hintsEnabled = curr.hintsEnabled
+                ).entry
+            }
+            curr.copy(
+                selectedCategory = category,
+                locationWord = generated,
+                usedWords = curr.usedWords + generated.word
+            )
+        }
+    }
+
+    fun setHintsEnabled(enabled: Boolean) {
+        _gameState.update { it.copy(hintsEnabled = enabled) }
     }
 
     fun selectNewLocationWord() {
         _gameState.update { curr ->
             val exclude = curr.locationWord?.word?.let { setOf(it) } ?: emptySet()
-            curr.copy(locationWord = locationRepository.pickRandomLocationWord(excludeWords = exclude))
+            val generated = if (curr.selectedCategory == "Locations") {
+                locationRepository.pickRandomLocationWord(excludeWords = exclude)
+            } else {
+                CategoryWordGenerator.generate(
+                    category = curr.selectedCategory,
+                    usedWords = curr.usedWords + exclude,
+                    hintsEnabled = curr.hintsEnabled
+                ).entry
+            }
+            curr.copy(
+                locationWord = generated,
+                usedWords = curr.usedWords + generated.word
+            )
         }
     }
 
@@ -234,7 +278,11 @@ class GameViewModel(
             } else {
                 buildRoleAssignments(curr.players, clampedImp)
             }
-            val selectedLocation = curr.locationWord ?: locationRepository.pickRandomLocationWord()
+            val selectedLocation = curr.locationWord ?: CategoryWordGenerator.generate(
+                category = curr.selectedCategory,
+                usedWords = curr.usedWords,
+                hintsEnabled = curr.hintsEnabled
+            ).entry
             val turnOrder = CryptoRandom.shuffled(curr.players.map { it.id })
             curr.copy(
                 phase = GamePhase.DISCUSSION,
@@ -296,7 +344,7 @@ class GameViewModel(
 
         val reporterName = curr.players.firstOrNull { it.id == reporterId }?.name
             ?: curr.activeTurnPlayer?.name
-            ?: "Crewmate"
+            ?: "Agent"
 
         SoundCuePlayer.playEmergencyMeetingCue()
 
